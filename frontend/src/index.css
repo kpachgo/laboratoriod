@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-bg text-text font-sans;
+}
+
+a {
+  color: inherit;
+}
+
+.field-label {
+  @apply block text-[12.5px] font-semibold text-text-secondary mb-1.5;
+}
+
+.field-input {
+  @apply w-full h-[42px] border border-border rounded-input px-3 text-sm font-sans bg-surface outline-none;
+}
+
+.field-input:focus {
+  @apply border-primary;
+}
+
+.card {
+  @apply bg-surface border border-border rounded-card;
+}
+
+.navlink {
+  @apply flex items-center gap-2.5 px-3.5 py-2.5 rounded-[10px] text-sm font-medium text-text-secondary;
+}
+
+.navlink.active {
+  @apply bg-primary-light text-primary-dark font-semibold;
+}
