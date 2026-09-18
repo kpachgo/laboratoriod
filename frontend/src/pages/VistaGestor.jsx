@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import api from '../api/client';
 import Layout from '../components/Layout';
+import { LogisticaBadge } from '../components/StatusBadge';
+import SeguimientoPedido from '../components/SeguimientoPedido';
 import { todayInputDate } from '../utils/format';
 
 const TIPO_STYLE = {
@@ -15,6 +17,7 @@ export default function VistaGestor() {
   const [ruta, setRuta] = useState(null);
   const [tab, setTab] = useState('pendiente');
   const [loading, setLoading] = useState(true);
+  const [abierta, setAbierta] = useState(null);
 
   useEffect(() => {
     setLoading(true);
@@ -43,6 +46,15 @@ export default function VistaGestor() {
     setRuta(data);
   }
 
+  async function terminarRuta() {
+    if (pendientesCount > 0 && !window.confirm(`Aún tienes ${pendientesCount} parada(s) pendiente(s). ¿Cerrar la ruta de todos modos?`)) {
+      return;
+    }
+    await api.put(`/rutas/${rutaId}`, { estado: 'completada' });
+    const { data } = await api.get(`/rutas/${rutaId}`);
+    setRuta(data);
+  }
+
   const paradas = (ruta?.paradas || []).filter((p) => p.estado === tab);
   const pendientesCount = (ruta?.paradas || []).filter((p) => p.estado === 'pendiente').length;
 
@@ -53,12 +65,22 @@ export default function VistaGestor() {
           <div className="font-display text-[22px] font-semibold">Rutas de hoy</div>
           <div className="text-[13px] text-text-faint mt-0.5">{ruta?.nombre || 'Sin ruta asignada'}</div>
         </div>
-        <input
-          type="date"
-          className="field-input w-44"
-          value={fecha}
-          onChange={(e) => setFecha(e.target.value)}
-        />
+        <div className="flex items-center gap-3">
+          {ruta && ruta.estado !== 'completada' && (
+            <button onClick={terminarRuta} className="h-10 px-4 rounded-input bg-primary text-white text-[13px] font-semibold">
+              Entregué las piezas en el laboratorio
+            </button>
+          )}
+          {ruta?.estado === 'completada' && (
+            <span className="px-3 py-1.5 rounded-full bg-[#E7F5EC] text-[#2F8F5B] text-xs font-bold">Ruta completada</span>
+          )}
+          <input
+            type="date"
+            className="field-input w-44"
+            value={fecha}
+            onChange={(e) => setFecha(e.target.value)}
+          />
+        </div>
       </div>
 
       <div className="flex gap-2">
@@ -86,7 +108,11 @@ export default function VistaGestor() {
         {paradas.map((p) => {
           const style = TIPO_STYLE[p.tipo];
           return (
-            <div key={p.id} className="card p-4 flex flex-col gap-3 max-w-xl">
+            <div
+              key={p.id}
+              onClick={() => setAbierta(abierta === p.id ? null : p.id)}
+              className="card p-4 flex flex-col gap-3 max-w-xl cursor-pointer"
+            >
               <div className="flex items-start justify-between">
                 <div className="flex flex-col gap-0.5">
                   <div className="flex items-center gap-2">
@@ -98,18 +124,31 @@ export default function VistaGestor() {
                     </span>
                     <span className="text-xs text-text-muted font-semibold">{p.folio || `#${p.pedido_id}`}</span>
                   </div>
-                  <div className="text-[15px] font-bold mt-1">{p.etapa}</div>
+                  <div className="text-[15px] font-bold mt-1">{p.clinica_nombre}</div>
+                  <div className="text-[12.5px] text-text-muted">{p.paciente_nombre || 'Sin paciente'} · {p.etapa}</div>
                 </div>
                 {p.hora_estimada && <div className="text-xs font-bold text-text-secondary">{p.hora_estimada}</div>}
               </div>
 
               <div className="h-px bg-divider" />
 
-              <div className="text-[12.5px] text-text-faint">Estado del pedido: {p.pedido_estado}</div>
+              <div className="flex items-center justify-between text-[12.5px] text-text-faint">
+                <div className="flex items-center gap-1.5">
+                  Recorrido del pedido: <LogisticaBadge etapa={p.etapa_logistica} />
+                </div>
+                <span className="font-semibold text-primary">{abierta === p.id ? 'Ocultar seguimiento ▴' : 'Ver seguimiento ▾'}</span>
+              </div>
+
+              {abierta === p.id && (
+                <SeguimientoPedido pedido={{ etapa_logistica: p.etapa_logistica, estado: p.pedido_estado }} />
+              )}
 
               {p.estado === 'pendiente' && (
                 <button
-                  onClick={() => marcarCompletada(p.id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    marcarCompletada(p.id);
+                  }}
                   className="h-[42px] rounded-input text-white text-sm font-bold"
                   style={{ background: style.color }}
                 >

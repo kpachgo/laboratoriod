@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import api from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import Layout from '../components/Layout';
-import { estadoInfo } from '../components/StatusBadge';
+import { estadoInfo, LogisticaBadge } from '../components/StatusBadge';
+import SeguimientoPedido from '../components/SeguimientoPedido';
 import { BackIcon, PlusIcon } from '../components/icons';
 import { formatFecha, FILES_BASE_URL } from '../utils/format';
 
@@ -12,6 +14,20 @@ export default function CasoDetalle() {
   const [pedidos, setPedidos] = useState([]);
   const [imagenesPorPedido, setImagenesPorPedido] = useState({});
   const [loading, setLoading] = useState(true);
+  const [version, setVersion] = useState(0);
+  const [error, setError] = useState('');
+  const { user } = useAuth();
+  const puedeRecibir = user?.rol === 'admin' || user?.rol === 'tecnico';
+
+  async function recibir(pedidoId) {
+    setError('');
+    try {
+      await api.post(`/pedidos/${pedidoId}/recibir-laboratorio`);
+      setVersion((v) => v + 1);
+    } catch (err) {
+      setError(err.response?.data?.error || 'No se pudo registrar la recepción');
+    }
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -31,7 +47,7 @@ export default function CasoDetalle() {
         setImagenesPorPedido(Object.fromEntries(resultados));
       })
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, version]);
 
   if (loading) {
     return (
@@ -109,6 +125,7 @@ export default function CasoDetalle() {
 
         <div className="flex-grow flex flex-col gap-3.5 overflow-y-auto">
           <div className="text-sm font-bold">Historial de pruebas</div>
+          {error && <div className="text-sm text-red-600">{error}</div>}
 
           <div className="flex flex-col">
             {pedidos.length === 0 && <div className="text-sm text-text-muted">Aún no hay pruebas registradas.</div>}
@@ -127,18 +144,30 @@ export default function CasoDetalle() {
                         <div className="text-[14.5px] font-bold">{p.etapa}</div>
                         <span className="text-[11.5px] font-semibold text-text-muted">{p.folio || `#${p.id}`}</span>
                       </div>
-                      <span
-                        className="px-2.5 py-1 rounded-full text-[11px] font-bold"
-                        style={{ background: info.bg, color: info.color }}
-                      >
-                        {info.label}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <LogisticaBadge etapa={p.etapa_logistica} />
+                        <span
+                          className="px-2.5 py-1 rounded-full text-[11px] font-bold"
+                          style={{ background: info.bg, color: info.color }}
+                        >
+                          {info.label}
+                        </span>
+                      </div>
                     </div>
                     <div className="flex gap-5 text-[12.5px] text-text-faint">
                       <span>{formatFecha(p.fecha_entrada)}</span>
                       <span>Gestor: {p.gestor_nombre || '—'}</span>
                       <span>{p.fotos_count} foto{p.fotos_count === 1 ? '' : 's'}</span>
                     </div>
+                    <SeguimientoPedido pedido={p} />
+                    {puedeRecibir && p.etapa_logistica === 'recibido' && (
+                      <button
+                        onClick={() => recibir(p.id)}
+                        className="h-10 rounded-input bg-primary text-white text-[13px] font-semibold"
+                      >
+                        Recibir en laboratorio
+                      </button>
+                    )}
                     {imagenesPorPedido[p.id]?.length > 0 && (
                       <div className="flex gap-2 flex-wrap">
                         {imagenesPorPedido[p.id].map((img) => (

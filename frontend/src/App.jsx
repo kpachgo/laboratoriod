@@ -9,6 +9,7 @@ import NuevaPrueba from './pages/NuevaPrueba';
 import PortalClinica from './pages/PortalClinica';
 import NuevoPedidoClinica from './pages/NuevoPedidoClinica';
 import VistaGestor from './pages/VistaGestor';
+import AsignarRutas from './pages/AsignarRutas';
 import Clinicas from './pages/Clinicas';
 import Usuarios from './pages/Usuarios';
 import Reportes from './pages/Reportes';
@@ -17,6 +18,11 @@ function HomeRedirect() {
   const { user } = useAuth();
   if (user?.rol === 'clinica') return <PortalClinica />;
   return <Dashboard />;
+}
+
+function RutasRedirect() {
+  const { user } = useAuth();
+  return user?.rol === 'admin' ? <AsignarRutas /> : <VistaGestor />;
 }
 
 export default function App() {
@@ -71,7 +77,7 @@ export default function App() {
         path="/rutas"
         element={
           <ProtectedRoute roles={['admin', 'gestor']}>
-            <VistaGestor />
+            <RutasRedirect />
           </ProtectedRoute>
         }
       />

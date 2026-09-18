@@ -5,17 +5,12 @@ import { useAuth } from '../context/AuthContext';
 import { ToothIcon, PlusIcon } from '../components/icons';
 import UserMenu from '../components/UserMenu';
 import { formatFecha } from '../utils/format';
+import { PASOS_SEGUIMIENTO, pasoActual } from '../components/SeguimientoPedido';
 
 const GREEN = '#2F8F5B';
 const PENDING = '#DCE2DF';
 const PENDING_TEXT = '#9AA6A3';
 const DONE_TEXT = '#1C2624';
-
-function stageOf(estado) {
-  if (estado === 'entregado') return 4;
-  if (estado === 'finalizado') return 3;
-  return 2; // en_proceso: recibido + en proceso
-}
 
 export default function PortalClinica() {
   const { user, logout } = useAuth();
@@ -79,13 +74,8 @@ export default function PortalClinica() {
           )}
 
           {casos.map((p) => {
-            const stage = stageOf(p.estado);
-            const steps = [
-              { label: 'Recibido', done: true },
-              { label: 'En proceso', done: stage >= 2 },
-              { label: 'Finalizado', done: stage >= 3 },
-              { label: 'Entregado', done: stage >= 4 },
-            ];
+            const stage = pasoActual(p);
+            const steps = PASOS_SEGUIMIENTO.map((paso, i) => ({ label: `${paso.emoji} ${paso.label}`, done: stage >= i + 1 }));
             return (
               <div key={p.caso_id} className="card px-[26px] py-[22px] flex flex-col gap-[18px]">
                 <div className="flex items-center justify-between">

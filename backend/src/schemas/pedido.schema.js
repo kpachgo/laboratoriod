@@ -24,6 +24,7 @@ const pedidoQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional().default(1),
   limit: z.coerce.number().int().positive().max(100).optional().default(20),
   estado: z.enum(['en_proceso', 'finalizado', 'entregado']).optional(),
+  etapaLogistica: z.enum(['pendiente_entrega', 'recibido', 'en_laboratorio', 'entregado_en_clinica']).optional(),
   etapa: z.string().optional(),
   casoId: z.coerce.number().int().positive().optional(),
   clinicaId: z.coerce.number().int().positive().optional(),

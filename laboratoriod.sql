@@ -107,7 +107,9 @@ CREATE TABLE pedidos (
     fecha_entrega_est   DATE,
     gestor_id           INT NULL,                        -- usuario (rol='gestor') que recogió/entregó
     estado              ENUM('en_proceso','finalizado','entregado')
-                             NOT NULL DEFAULT 'en_proceso',
+                             NOT NULL DEFAULT 'en_proceso',   -- estado del trabajo en laboratorio
+    etapa_logistica     ENUM('pendiente_entrega','recibido','en_laboratorio','entregado_en_clinica')
+                             NOT NULL DEFAULT 'en_laboratorio', -- recorrido del gestor (cambia con las paradas/rutas)
     observaciones       TEXT,
     created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -166,12 +168,31 @@ CREATE TABLE imagenes (
     FOREIGN KEY (pedido_id) REFERENCES pedidos(id)
         ON DELETE CASCADE
 ) ENGINE=InnoDB;
- 
+
+-- ------------------------------------------------------------
+-- PEDIDO_LOGISTICA_HISTORIAL: traza cada cambio de etapa logística
+-- de un pedido (quién lo cambió y cuándo), disparado por las
+-- paradas y rutas del gestor.
+-- ------------------------------------------------------------
+CREATE TABLE pedido_logistica_historial (
+    id                INT AUTO_INCREMENT PRIMARY KEY,
+    pedido_id         INT NOT NULL,
+    etapa_anterior    VARCHAR(30) NULL,
+    etapa_nueva       VARCHAR(30) NOT NULL,
+    usuario_id        INT NULL,
+    created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (pedido_id) REFERENCES pedidos(id)
+        ON DELETE CASCADE,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+) ENGINE=InnoDB;
+
 -- Índices útiles para búsquedas frecuentes
 CREATE INDEX idx_casos_clinica ON casos(clinica_id);
 CREATE INDEX idx_caso_items_caso ON caso_items(caso_id);
 CREATE INDEX idx_pedidos_caso ON pedidos(caso_id);
 CREATE INDEX idx_pedidos_estado ON pedidos(estado);
+CREATE INDEX idx_pedidos_etapa_logistica ON pedidos(etapa_logistica);
+CREATE INDEX idx_pedido_logistica_historial_pedido ON pedido_logistica_historial(pedido_id);
 CREATE INDEX idx_pedidos_etapa ON pedidos(etapa);
 CREATE INDEX idx_imagenes_pedido ON imagenes(pedido_id);
 CREATE INDEX idx_usuarios_clinica ON usuarios(clinica_id);

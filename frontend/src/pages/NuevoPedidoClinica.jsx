@@ -70,7 +70,7 @@ export default function NuevoPedidoClinica() {
 
       const { data: pedido } = await api.post('/pedidos', {
         casoId: caso.id,
-        etapa: 'Recibido',
+        etapa: 'Primera prueba',
         fechaEntrada: todayInputDate(),
         fechaEntregaEst: fechaEntregaEst || null,
         observaciones: observaciones || null,

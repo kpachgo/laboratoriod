@@ -1,11 +1,16 @@
 const pool = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
+const { cambiarEtapaLogistica } = require('../utils/pedidoLogistica');
 
 const BASE_SELECT = `
   SELECT p.*, c.clinica_id AS caso_clinica_id, c.paciente_nombre, c.descripcion AS caso_descripcion,
          cl.nombre AS clinica_nombre, g.nombre AS gestor_nombre,
-         (SELECT COUNT(*) FROM imagenes i WHERE i.pedido_id = p.id) AS fotos_count
+         (SELECT COUNT(*) FROM imagenes i WHERE i.pedido_id = p.id) AS fotos_count,
+         (SELECT COUNT(*) FROM ruta_paradas rp WHERE rp.pedido_id = p.id AND rp.estado = 'pendiente') AS paradas_pendientes,
+         EXISTS (SELECT 1 FROM ruta_paradas rp JOIN rutas r ON r.id = rp.ruta_id
+                 WHERE rp.pedido_id = p.id AND rp.tipo = 'recoger' AND rp.estado = 'completada'
+                   AND r.estado = 'completada') AS gestor_llego_laboratorio
   FROM pedidos p
   JOIN casos c ON c.id = p.caso_id
   JOIN clinicas cl ON cl.id = c.clinica_id
@@ -13,13 +18,17 @@ const BASE_SELECT = `
 `;
 
 const listPedidos = asyncHandler(async (req, res) => {
-  const { page, limit, estado, etapa, casoId, clinicaId } = req.query;
+  const { page, limit, estado, etapaLogistica, etapa, casoId, clinicaId } = req.query;
   const where = [];
   const params = [];
 
   if (estado) {
     where.push('p.estado = ?');
     params.push(estado);
+  }
+  if (etapaLogistica) {
+    where.push('p.etapa_logistica = ?');
+    params.push(etapaLogistica);
   }
   if (etapa) {
     where.push('p.etapa = ?');
@@ -83,10 +92,14 @@ const createPedido = asyncHandler(async (req, res) => {
   // La asignación de gestor es una decisión interna del laboratorio, no de la clínica.
   const gestorIdFinal = req.user.rol === 'clinica' ? null : gestorId ?? null;
 
+  // Un pedido creado por la clínica nace esperando que el gestor lo retire;
+  // uno creado por el laboratorio (nueva prueba de un caso ya en curso) ya está en el laboratorio.
+  const etapaLogistica = req.user.rol === 'clinica' ? 'pendiente_entrega' : 'en_laboratorio';
+
   const [result] = await pool.query(
-    `INSERT INTO pedidos (caso_id, folio, etapa, fecha_entrada, fecha_entrega_est, gestor_id, observaciones)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [casoId, folio ?? null, etapa, fechaEntrada, fechaEntregaEst ?? null, gestorIdFinal, observaciones ?? null]
+    `INSERT INTO pedidos (caso_id, folio, etapa, fecha_entrada, fecha_entrega_est, gestor_id, etapa_logistica, observaciones)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [casoId, folio ?? null, etapa, fechaEntrada, fechaEntregaEst ?? null, gestorIdFinal, etapaLogistica, observaciones ?? null]
   );
 
   res.status(201).json({ id: result.insertId });
@@ -116,10 +129,21 @@ const updatePedido = asyncHandler(async (req, res) => {
   res.json({ message: 'Pedido actualizado' });
 });
 
+const recibirEnLaboratorio = asyncHandler(async (req, res) => {
+  const [rows] = await pool.query('SELECT etapa_logistica FROM pedidos WHERE id = ?', [req.params.id]);
+  if (!rows[0]) throw new ApiError(404, 'Pedido no encontrado');
+  if (rows[0].etapa_logistica !== 'recibido') {
+    throw new ApiError(400, 'Solo se puede recibir un pedido que el gestor ya retiró de la clínica');
+  }
+
+  await cambiarEtapaLogistica(pool, req.params.id, 'en_laboratorio', req.user.id);
+  res.json({ message: 'Pedido recibido en laboratorio' });
+});
+
 const deletePedido = asyncHandler(async (req, res) => {
   const [result] = await pool.query('DELETE FROM pedidos WHERE id = ?', [req.params.id]);
   if (result.affectedRows === 0) throw new ApiError(404, 'Pedido no encontrado');
   res.status(204).send();
 });
 
-module.exports = { listPedidos, getPedido, createPedido, updatePedido, deletePedido };
+module.exports = { listPedidos, getPedido, createPedido, updatePedido, recibirEnLaboratorio, deletePedido };

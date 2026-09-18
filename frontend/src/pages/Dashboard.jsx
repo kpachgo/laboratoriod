@@ -1,10 +1,19 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import Layout from '../components/Layout';
-import StatusBadge from '../components/StatusBadge';
+import StatusBadge, { LogisticaBadge } from '../components/StatusBadge';
 import { SearchIcon, PlusIcon } from '../components/icons';
 import { formatFecha } from '../utils/format';
+
+const FILTROS_LOGISTICA = [
+  { value: '', label: 'Toda la logística' },
+  { value: 'pendiente_entrega', label: 'Pendiente de entregar' },
+  { value: 'recibido', label: 'Recibido' },
+  { value: 'en_laboratorio', label: 'En laboratorio' },
+  { value: 'entregado_en_clinica', label: 'Entregado en clínica' },
+];
 
 const FILTROS = [
   { value: '', label: 'Todos' },
@@ -13,17 +22,49 @@ const FILTROS = [
   { value: 'entregado', label: 'Entregado' },
 ];
 
+const GRID = 'grid-cols-[80px_80px_1fr_1.1fr_1fr_180px_120px_90px]';
+
 export default function Dashboard() {
   const [pedidos, setPedidos] = useState([]);
   const [total, setTotal] = useState(0);
   const [estado, setEstado] = useState('');
+  const [etapaLogistica, setEtapaLogistica] = useState('');
   const [busqueda, setBusqueda] = useState('');
   const [loading, setLoading] = useState(true);
+  const [enCamino, setEnCamino] = useState([]);
+  const [recibiendo, setRecibiendo] = useState(null);
+  const [error, setError] = useState('');
+  const [version, setVersion] = useState(0);
+  const { user } = useAuth();
+  const puedeRecibir = user?.rol === 'admin' || user?.rol === 'tecnico';
+
+  useEffect(() => {
+    if (!puedeRecibir) return;
+    api
+      .get('/pedidos', { params: { etapaLogistica: 'recibido', limit: 100 } })
+      .then(({ data }) =>
+        setEnCamino(data.data.slice().sort((a, b) => Number(b.gestor_llego_laboratorio) - Number(a.gestor_llego_laboratorio)))
+      );
+  }, [puedeRecibir, version]);
+
+  async function recibir(pedidoId) {
+    setError('');
+    setRecibiendo(pedidoId);
+    try {
+      await api.post(`/pedidos/${pedidoId}/recibir-laboratorio`);
+      setVersion((v) => v + 1);
+    } catch (err) {
+      setError(err.response?.data?.error || 'No se pudo registrar la recepción');
+    } finally {
+      setRecibiendo(null);
+    }
+  }
 
   useEffect(() => {
     setLoading(true);
     const params = { limit: 50 };
     if (estado) params.estado = estado;
+    if (etapaLogistica) params.etapaLogistica = etapaLogistica;
 
     api
       .get('/pedidos', { params })
@@ -32,7 +73,7 @@ export default function Dashboard() {
         setTotal(data.pagination.total);
       })
       .finally(() => setLoading(false));
-  }, [estado]);
+  }, [estado, etapaLogistica, version]);
 
   const filtrados = pedidos.filter((p) => {
     if (!busqueda) return true;
@@ -72,6 +113,38 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {error && <div className="text-sm text-red-600">{error}</div>}
+
+      {puedeRecibir && enCamino.length > 0 && (
+        <div className="card p-4 flex flex-col gap-3" style={{ borderLeft: '4px solid #6B3FA0' }}>
+          <div>
+            <div className="text-sm font-bold">🚚 Piezas en camino al laboratorio ({enCamino.length})</div>
+            <div className="text-xs text-text-faint mt-0.5">Cuando la pieza llegue físicamente, confirma su recepción.</div>
+          </div>
+          {enCamino.map((p) => (
+            <div key={p.id} className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="text-[13px] flex items-center gap-2 flex-wrap">
+                <span className="font-bold text-primary-dark">Caso C-{p.caso_id}</span>
+                <span>{p.clinica_nombre}</span>
+                <span className="text-text-muted">{p.paciente_nombre || 'Sin paciente'} · {p.etapa}</span>
+                {p.gestor_llego_laboratorio ? (
+                  <span className="text-[11.5px] font-bold text-[#2F8F5B]">El gestor ya llegó al laboratorio</span>
+                ) : (
+                  <span className="text-[11.5px] text-text-faint">En camino</span>
+                )}
+              </div>
+              <button
+                disabled={recibiendo === p.id}
+                onClick={() => recibir(p.id)}
+                className="h-9 px-4 rounded-input bg-primary text-white text-[12.5px] font-semibold disabled:opacity-50"
+              >
+                {recibiendo === p.id ? 'Registrando...' : 'Recibir en laboratorio'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="flex gap-2">
         {FILTROS.map((f) => (
           <button
@@ -86,13 +159,28 @@ export default function Dashboard() {
         ))}
       </div>
 
+      <div className="flex gap-2 flex-wrap">
+        {FILTROS_LOGISTICA.map((f) => (
+          <button
+            key={f.value}
+            onClick={() => setEtapaLogistica(f.value)}
+            className={`px-3.5 py-1.5 rounded-full text-[12.5px] font-semibold ${
+              etapaLogistica === f.value ? 'bg-text text-white' : 'bg-surface border border-border text-text-secondary'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
       <div className="card overflow-hidden flex-grow overflow-y-auto">
-        <div className="grid grid-cols-[90px_100px_1fr_1.2fr_1fr_130px_100px] px-5 py-3 border-b border-divider text-[11.5px] font-bold text-text-muted uppercase tracking-wide">
+        <div className={`grid ${GRID} px-5 py-3 border-b border-divider text-[11.5px] font-bold text-text-muted uppercase tracking-wide`}>
           <div>Folio</div>
           <div>Caso</div>
           <div>Etapa</div>
           <div>Clínica</div>
           <div>Paciente</div>
+          <div>Logística</div>
           <div>Estado</div>
           <div>Fecha</div>
         </div>
@@ -106,13 +194,14 @@ export default function Dashboard() {
           <Link
             key={p.id}
             to={`/casos/${p.caso_id}`}
-            className="grid grid-cols-[90px_100px_1fr_1.2fr_1fr_130px_100px] px-5 py-3.5 border-b border-[#F0F2F1] items-center text-[13.5px] no-underline"
+            className={`grid ${GRID} px-5 py-3.5 border-b border-[#F0F2F1] items-center text-[13.5px] no-underline`}
           >
             <div className="font-semibold text-text-muted">{p.folio || '—'}</div>
             <div className="font-bold text-primary-dark">C-{p.caso_id}</div>
             <div>{p.etapa}</div>
             <div className="text-text-secondary">{p.clinica_nombre}</div>
             <div>{p.paciente_nombre || '—'}</div>
+            <div><LogisticaBadge etapa={p.etapa_logistica} /></div>
             <div><StatusBadge estado={p.estado} /></div>
             <div className="text-text-muted text-xs">{formatFecha(p.fecha_entrada)}</div>
           </Link>

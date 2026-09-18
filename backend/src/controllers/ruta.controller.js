@@ -1,25 +1,33 @@
 const pool = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
+const { cambiarEtapaLogistica } = require('../utils/pedidoLogistica');
 
 const listRutas = asyncHandler(async (req, res) => {
   const where = [];
   const params = [];
 
   if (req.user.rol === 'gestor') {
-    where.push('gestor_id = ?');
+    where.push('r.gestor_id = ?');
     params.push(req.user.id);
   } else if (req.query.gestorId) {
-    where.push('gestor_id = ?');
+    where.push('r.gestor_id = ?');
     params.push(req.query.gestorId);
   }
   if (req.query.fecha) {
-    where.push('fecha = ?');
+    where.push('r.fecha = ?');
     params.push(req.query.fecha);
   }
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const [rows] = await pool.query(`SELECT * FROM rutas ${whereSql} ORDER BY fecha DESC, id DESC`, params);
+  const [rows] = await pool.query(
+    `SELECT r.*, u.nombre AS gestor_nombre
+     FROM rutas r
+     JOIN usuarios u ON u.id = r.gestor_id
+     ${whereSql}
+     ORDER BY r.fecha DESC, r.id DESC`,
+    params
+  );
   res.json(rows);
 });
 
@@ -33,9 +41,12 @@ const getRuta = asyncHandler(async (req, res) => {
   }
 
   const [paradas] = await pool.query(
-    `SELECT rp.*, p.folio, p.etapa, p.estado AS pedido_estado
+    `SELECT rp.*, p.folio, p.caso_id, p.etapa, p.estado AS pedido_estado, p.etapa_logistica,
+            c.paciente_nombre, cl.nombre AS clinica_nombre
      FROM ruta_paradas rp
      JOIN pedidos p ON p.id = rp.pedido_id
+     JOIN casos c ON c.id = p.caso_id
+     JOIN clinicas cl ON cl.id = c.clinica_id
      WHERE rp.ruta_id = ?
      ORDER BY rp.orden ASC, rp.id ASC`,
     [ruta.id]
@@ -57,6 +68,9 @@ const updateRuta = asyncHandler(async (req, res) => {
   const [existingRows] = await pool.query('SELECT * FROM rutas WHERE id = ?', [req.params.id]);
   const existing = existingRows[0];
   if (!existing) throw new ApiError(404, 'Ruta no encontrada');
+  if (req.user.rol === 'gestor' && existing.gestor_id !== req.user.id) {
+    throw new ApiError(403, 'No tiene acceso a esta ruta');
+  }
 
   const { gestorId, fecha, nombre, estado } = req.body;
   await pool.query(
@@ -69,6 +83,7 @@ const updateRuta = asyncHandler(async (req, res) => {
       req.params.id,
     ]
   );
+
   res.json({ message: 'Ruta actualizada' });
 });
 
@@ -100,6 +115,11 @@ const updateParada = asyncHandler(async (req, res) => {
   const existing = existingRows[0];
   if (!existing) throw new ApiError(404, 'Parada no encontrada');
 
+  if (req.user.rol === 'gestor') {
+    const [rutaRows] = await pool.query('SELECT gestor_id FROM rutas WHERE id = ?', [existing.ruta_id]);
+    if (rutaRows[0]?.gestor_id !== req.user.id) throw new ApiError(403, 'No tiene acceso a esta parada');
+  }
+
   const { tipo, orden, estado, horaEstimada } = req.body;
   const horaReal = estado === 'completada' && existing.estado !== 'completada' ? new Date() : existing.hora_real;
 
@@ -114,6 +134,21 @@ const updateParada = asyncHandler(async (req, res) => {
       req.params.id,
     ]
   );
+
+  // Al completar la parada, el pedido avanza en su recorrido logístico:
+  // recoger en la clínica -> "recibido" (en camino al laboratorio);
+  // entregar en la clínica -> "entregado_en_clinica".
+  if (estado === 'completada' && existing.estado !== 'completada') {
+    const tipoFinal = tipo ?? existing.tipo;
+    const [pedidoRows] = await pool.query('SELECT etapa_logistica FROM pedidos WHERE id = ?', [existing.pedido_id]);
+    const etapaActual = pedidoRows[0]?.etapa_logistica;
+    if (tipoFinal === 'recoger' && etapaActual === 'pendiente_entrega') {
+      await cambiarEtapaLogistica(pool, existing.pedido_id, 'recibido', req.user.id);
+    } else if (tipoFinal === 'entregar' && etapaActual === 'en_laboratorio') {
+      await cambiarEtapaLogistica(pool, existing.pedido_id, 'entregado_en_clinica', req.user.id);
+    }
+  }
+
   res.json({ message: 'Parada actualizada' });
 });
 

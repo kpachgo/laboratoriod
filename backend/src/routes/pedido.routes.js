@@ -30,6 +30,13 @@ router.put(
   validateBody(updatePedidoSchema),
   pedidoController.updatePedido
 );
+// El laboratorio confirma que la pieza que traía el gestor ya llegó.
+router.post(
+  '/:id/recibir-laboratorio',
+  authorize('admin', 'tecnico'),
+  validateParams(idParam),
+  pedidoController.recibirEnLaboratorio
+);
 router.delete('/:id', authorize('admin'), validateParams(idParam), pedidoController.deletePedido);
 
 // Imágenes de un pedido (pruebas físicas fotografiadas). Una clínica puede adjuntar
