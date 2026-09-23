@@ -4,6 +4,7 @@ import api from '../api/client';
 import { subirImagenes } from '../api/imagenes';
 import Layout from '../components/Layout';
 import PhotoPicker from '../components/PhotoPicker';
+import { useCelebracion } from '../components/Celebracion';
 import { BackIcon, PlusIcon } from '../components/icons';
 import { todayInputDate } from '../utils/format';
 
@@ -15,6 +16,7 @@ function emptyItem() {
 
 export default function NuevoCaso() {
   const navigate = useNavigate();
+  const { celebrar } = useCelebracion();
   const [clinicas, setClinicas] = useState([]);
   const [doctores, setDoctores] = useState([]);
   const [gestores, setGestores] = useState([]);
@@ -94,6 +96,12 @@ export default function NuevoCaso() {
         await subirImagenes(pedido.id, item.fotos, etiqueta);
       }
 
+      await celebrar({
+        emoji: '🦷',
+        tono: 'primario',
+        titulo: 'Caso creado',
+        detalle: `Caso C-${caso.id} con su primera prueba (${etapa})`,
+      });
       navigate(`/casos/${caso.id}`);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo guardar el caso');
@@ -104,24 +112,24 @@ export default function NuevoCaso() {
 
   return (
     <Layout>
-      <div className="h-16 flex-shrink-0 bg-surface border-b border-border -mx-8 -mt-7 px-7 flex items-center justify-between box-border">
-        <div className="flex items-center gap-3.5">
-          <Link to="/" className="flex w-8 h-8 rounded-lg items-center justify-center border border-border">
+      <div className="min-h-[64px] py-3 md:py-0 flex-shrink-0 bg-surface border-b border-border -mx-4 -mt-4 md:-mx-8 md:-mt-7 px-4 md:px-7 flex flex-wrap items-center justify-between gap-3 box-border">
+        <div className="flex items-center gap-3.5 min-w-0">
+          <Link to="/" className="flex w-9 h-9 md:w-8 md:h-8 flex-shrink-0 rounded-lg items-center justify-center border border-border" aria-label="Volver">
             <BackIcon />
           </Link>
-          <div>
+          <div className="min-w-0">
             <div className="font-display text-[17px] font-semibold">Nuevo caso</div>
             <div className="text-xs text-text-muted">Se crea el caso junto con su primera prueba</div>
           </div>
         </div>
-        <div className="flex gap-2.5">
-          <Link to="/" className="h-[38px] px-4 rounded-input border border-border flex items-center text-[13px] font-semibold text-text-secondary">
+        <div className="flex gap-2.5 w-full sm:w-auto">
+          <Link to="/" className="flex-1 sm:flex-none justify-center h-10 md:h-[38px] px-4 rounded-input border border-border flex items-center text-[13px] font-semibold text-text-secondary">
             Cancelar
           </Link>
           <button
             onClick={handleSubmit}
             disabled={saving}
-            className="h-[38px] px-[18px] rounded-input bg-primary text-white flex items-center text-[13px] font-semibold disabled:opacity-60"
+            className="flex-1 sm:flex-none justify-center h-10 md:h-[38px] px-[18px] rounded-input bg-primary text-white flex items-center text-[13px] font-semibold disabled:opacity-60"
           >
             {saving ? 'Guardando...' : 'Guardar caso'}
           </button>
@@ -130,11 +138,11 @@ export default function NuevoCaso() {
 
       {error && <div className="text-sm text-red-600">{error}</div>}
 
-      <div className="flex-grow flex gap-6 overflow-hidden pt-2">
-        <div className="flex-grow flex flex-col gap-[18px] overflow-y-auto pr-1">
-          <div className="card p-[22px] flex flex-col gap-4">
+      <div className="flex-grow flex flex-col lg:flex-row gap-4 lg:gap-6 overflow-hidden pt-2">
+        <div className="flex-grow min-w-0 flex flex-col gap-4 lg:gap-[18px] overflow-y-auto lg:pr-1">
+          <div className="card p-4 sm:p-[22px] flex flex-col gap-4">
             <div className="text-sm font-bold">Datos generales</div>
-            <div className="grid grid-cols-2 gap-3.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <div>
                 <label className="field-label">Clínica</label>
                 <select className="field-input" value={clinicaId} onChange={(e) => { setClinicaId(e.target.value); setDoctorId(''); }}>
@@ -165,14 +173,14 @@ export default function NuevoCaso() {
           </div>
 
           {items.map((item, index) => (
-            <div key={index} className="card p-[22px] flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-bold">Ítem {index + 1}{item.tipoTrabajo ? ` — ${item.tipoTrabajo}` : ''}</div>
+            <div key={index} className="card p-4 sm:p-[22px] flex flex-col gap-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-sm font-bold min-w-0">Ítem {index + 1}{item.tipoTrabajo ? ` — ${item.tipoTrabajo}` : ''}</div>
                 {items.length > 1 && (
-                  <button onClick={() => removeItem(index)} className="text-xs text-text-muted">Quitar</button>
+                  <button onClick={() => removeItem(index)} className="text-xs text-text-muted py-1 flex-shrink-0">Quitar</button>
                 )}
               </div>
-              <div className="grid grid-cols-3 gap-3.5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                 <div>
                   <label className="field-label">Tipo de trabajo</label>
                   <input className="field-input" type="text" placeholder="Corona, puente..." value={item.tipoTrabajo} onChange={(e) => updateItem(index, 'tipoTrabajo', e.target.value)} />
@@ -204,8 +212,8 @@ export default function NuevoCaso() {
           </button>
         </div>
 
-        <div className="w-80 flex-shrink-0 flex flex-col gap-4">
-          <div className="card p-5 flex flex-col gap-3.5">
+        <div className="w-full lg:w-80 flex-shrink-0 flex flex-col gap-4">
+          <div className="card p-4 sm:p-5 flex flex-col gap-3.5">
             <div className="text-sm font-bold">Primera prueba</div>
             <div>
               <label className="field-label">Etapa</label>
@@ -238,7 +246,7 @@ export default function NuevoCaso() {
             </div>
           </div>
 
-          <div className="card p-5 flex flex-col gap-2.5">
+          <div className="card p-4 sm:p-5 flex flex-col gap-2.5">
             <div className="text-sm font-bold">Observaciones</div>
             <textarea
               placeholder="Indicaciones adicionales del doctor..."

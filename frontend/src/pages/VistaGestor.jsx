@@ -3,6 +3,7 @@ import api from '../api/client';
 import Layout from '../components/Layout';
 import { LogisticaBadge } from '../components/StatusBadge';
 import SeguimientoPedido from '../components/SeguimientoPedido';
+import { useCelebracion, esperar } from '../components/Celebracion';
 import { formatFecha, todayInputDate } from '../utils/format';
 
 const TIPO_STYLE = {
@@ -20,6 +21,9 @@ export default function VistaGestor() {
   const [tab, setTab] = useState('pendiente');
   const [loading, setLoading] = useState(true);
   const [abierta, setAbierta] = useState(null);
+  const [marcando, setMarcando] = useState(null);
+  const [saliendo, setSaliendo] = useState(null);
+  const { celebrar } = useCelebracion();
 
   const cargarPendientes = useCallback(
     () => api.get('/ruta-paradas', { params: { estado: 'pendiente' } }).then(({ data }) => setPendientes(data)),
@@ -51,12 +55,25 @@ export default function VistaGestor() {
       .finally(() => setLoading(false));
   }, [rutaId]);
 
-  async function marcarCompletada(paradaId) {
-    await api.put(`/ruta-paradas/${paradaId}`, { estado: 'completada' });
-    await Promise.all([
-      cargarPendientes(),
-      rutaId ? api.get(`/rutas/${rutaId}`).then(({ data }) => setRuta(data)) : null,
-    ]);
+  async function marcarCompletada(parada) {
+    setMarcando(parada.id);
+    try {
+      await api.put(`/ruta-paradas/${parada.id}`, { estado: 'completada' });
+      setSaliendo(parada.id);
+      celebrar(
+        parada.tipo === 'recoger'
+          ? { emoji: '🚚', tono: 'azul', titulo: '¡Pedido recogido!', detalle: `Lleva la pieza de ${parada.clinica_nombre} al laboratorio` }
+          : { emoji: '📦', tono: 'verde', titulo: '¡Entregado en clínica!', detalle: `${parada.clinica_nombre} ya tiene su pieza` }
+      );
+      await esperar(350);
+      await Promise.all([
+        cargarPendientes(),
+        rutaId ? api.get(`/rutas/${rutaId}`).then(({ data }) => setRuta(data)) : null,
+      ]);
+    } finally {
+      setSaliendo(null);
+      setMarcando(null);
+    }
   }
 
   async function terminarRuta() {
@@ -64,6 +81,7 @@ export default function VistaGestor() {
       return;
     }
     await api.put(`/rutas/${rutaId}`, { estado: 'completada' });
+    celebrar({ emoji: '🔬', tono: 'primario', titulo: '¡Piezas entregadas en el laboratorio!', detalle: 'El laboratorio confirmará su recepción' });
     const { data } = await api.get(`/rutas/${rutaId}`);
     setRuta(data);
   }
@@ -76,23 +94,28 @@ export default function VistaGestor() {
 
   return (
     <Layout>
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="font-display text-[22px] font-semibold">Rutas de hoy</div>
-          <div className="text-[13px] text-text-faint mt-0.5">{ruta?.nombre || 'Sin ruta asignada'}</div>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="font-display text-[22px] font-semibold">Rutas de hoy</div>
+            <div className="text-[13px] text-text-faint mt-0.5">{ruta?.nombre || 'Sin ruta asignada'}</div>
+          </div>
+          {ruta?.estado === 'completada' && (
+            <span className="md:hidden flex-shrink-0 px-3 py-1.5 rounded-full bg-[#E7F5EC] text-[#2F8F5B] text-xs font-bold">Ruta completada</span>
+          )}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col-reverse sm:flex-row sm:items-center gap-3">
           {ruta && ruta.estado !== 'completada' && (
-            <button onClick={terminarRuta} className="h-10 px-4 rounded-input bg-primary text-white text-[13px] font-semibold">
+            <button onClick={terminarRuta} className="h-11 md:h-10 px-4 rounded-input bg-primary text-white text-[13px] font-semibold">
               Entregué las piezas en el laboratorio
             </button>
           )}
           {ruta?.estado === 'completada' && (
-            <span className="px-3 py-1.5 rounded-full bg-[#E7F5EC] text-[#2F8F5B] text-xs font-bold">Ruta completada</span>
+            <span className="hidden md:inline px-3 py-1.5 rounded-full bg-[#E7F5EC] text-[#2F8F5B] text-xs font-bold">Ruta completada</span>
           )}
           <input
             type="date"
-            className="field-input w-44"
+            className="field-input sm:w-44"
             value={fecha}
             onChange={(e) => setFecha(e.target.value)}
           />
@@ -132,11 +155,11 @@ export default function VistaGestor() {
             <div
               key={p.id}
               onClick={() => setAbierta(abierta === p.id ? null : p.id)}
-              className="card p-4 flex flex-col gap-3 max-w-xl cursor-pointer"
+              className={`card p-4 flex flex-col gap-3 w-full max-w-xl cursor-pointer ${saliendo === p.id ? 'tarjeta-salida' : ''}`}
             >
-              <div className="flex items-start justify-between">
-                <div className="flex flex-col gap-0.5">
-                  <div className="flex items-center gap-2">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span
                       className="px-2.5 py-0.5 rounded-full text-[10.5px] font-bold"
                       style={{ background: style.bg, color: style.color }}
@@ -156,13 +179,13 @@ export default function VistaGestor() {
                   <div className="text-[15px] font-bold mt-1">{p.clinica_nombre}</div>
                   <div className="text-[12.5px] text-text-muted">{p.paciente_nombre || 'Sin paciente'} · {p.etapa}</div>
                 </div>
-                {p.hora_estimada && <div className="text-xs font-bold text-text-secondary">{p.hora_estimada}</div>}
+                {p.hora_estimada && <div className="text-xs font-bold text-text-secondary flex-shrink-0">{p.hora_estimada}</div>}
               </div>
 
               <div className="h-px bg-divider" />
 
-              <div className="flex items-center justify-between text-[12.5px] text-text-faint">
-                <div className="flex items-center gap-1.5">
+              <div className="flex items-center justify-between flex-wrap gap-2 text-[12.5px] text-text-faint">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   Recorrido del pedido: <LogisticaBadge etapa={p.etapa_logistica} />
                 </div>
                 <span className="font-semibold text-primary">{abierta === p.id ? 'Ocultar seguimiento ▴' : 'Ver seguimiento ▾'}</span>
@@ -174,12 +197,13 @@ export default function VistaGestor() {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    marcarCompletada(p.id);
+                    marcarCompletada(p);
                   }}
-                  className="h-[42px] rounded-input text-white text-sm font-bold"
+                  disabled={marcando !== null}
+                  className="h-12 md:h-[42px] rounded-input text-white text-sm font-bold disabled:opacity-60"
                   style={{ background: style.color }}
                 >
-                  {style.accion}
+                  {marcando === p.id ? 'Guardando...' : style.accion}
                 </button>
               )}
             </div>

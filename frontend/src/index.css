@@ -33,3 +33,198 @@ a {
 .navlink.active {
   @apply bg-primary-light text-primary-dark font-semibold;
 }
+
+/* Animaciones del seguimiento del pedido (SeguimientoPedido). */
+@keyframes seg-fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+.seg-fill {
+  transform-origin: left;
+  animation: seg-fill 0.5s ease-out both;
+}
+
+@keyframes seg-flow {
+  to { background-position: 12px 0; }
+}
+
+.seg-flow {
+  background-image: repeating-linear-gradient(90deg, #0E7C86 0 6px, transparent 6px 12px);
+  animation: seg-flow 0.6s linear infinite;
+}
+
+@keyframes seg-drive {
+  0% { left: 0%; opacity: 0; }
+  12%, 88% { opacity: 1; }
+  100% { left: 100%; opacity: 0; }
+}
+
+.seg-vehicle {
+  transform: translateX(-50%);
+  animation: seg-drive 3.2s ease-in-out infinite;
+}
+
+@keyframes seg-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+.seg-bob {
+  animation: seg-bob 0.35s ease-in-out infinite;
+}
+
+@keyframes seg-pop {
+  0% { transform: scale(0); }
+  70% { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+
+.seg-pop {
+  animation: seg-pop 0.35s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seg-fill, .seg-flow, .seg-bob, .seg-pop {
+    animation: none;
+  }
+
+  .seg-vehicle {
+    animation: none;
+    left: 50%;
+  }
+}
+
+/* Animaciones de confirmación (Celebracion.jsx) y de tarjetas que salen o entran de una lista. */
+@keyframes celebra-fondo {
+  from { opacity: 0; }
+}
+
+.celebra-fondo {
+  animation: celebra-fondo 0.2s ease-out;
+  transition: opacity 0.2s ease-in;
+}
+
+.celebra-salida {
+  opacity: 0;
+}
+
+@keyframes celebra-tarjeta {
+  from { opacity: 0; transform: translateY(12px) scale(0.92); }
+}
+
+.celebra-tarjeta {
+  animation: celebra-tarjeta 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+@keyframes celebra-pop {
+  0% { transform: scale(0); }
+  65% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+
+.celebra-circulo {
+  animation: celebra-pop 0.45s ease-out 0.05s both;
+}
+
+@keyframes celebra-emoji {
+  0% { transform: scale(0) rotate(-20deg); }
+  60% { transform: scale(1.2) rotate(8deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+
+.celebra-emoji {
+  animation: celebra-emoji 0.5s ease-out 0.15s both;
+}
+
+.celebra-check {
+  animation: celebra-pop 0.35s ease-out 0.45s both;
+}
+
+.celebra-trazo {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: celebra-trazo 0.3s ease-out 0.65s forwards;
+}
+
+@keyframes celebra-trazo {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes celebra-onda {
+  from { transform: scale(1); opacity: 0.35; }
+  to { transform: scale(1.9); opacity: 0; }
+}
+
+.celebra-onda {
+  opacity: 0;
+  animation: celebra-onda 0.7s ease-out 0.3s both;
+}
+
+@keyframes celebra-particula {
+  from { transform: translate(-50%, -50%) rotate(var(--angulo)) translateY(0) scale(0.4); opacity: 1; }
+  to { transform: translate(-50%, -50%) rotate(var(--angulo)) translateY(-62px) scale(1); opacity: 0; }
+}
+
+.celebra-particula {
+  opacity: 0;
+  animation: celebra-particula 0.6s ease-out 0.3s both;
+}
+
+@keyframes celebra-aviso {
+  0% { opacity: 0; transform: translateY(16px); }
+  8%, 88% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(8px); }
+}
+
+.celebra-aviso {
+  animation: celebra-aviso 2.6s ease both;
+}
+
+@keyframes tarjeta-salida {
+  to { opacity: 0; transform: translateX(32px) scale(0.97); }
+}
+
+.tarjeta-salida {
+  pointer-events: none;
+  animation: tarjeta-salida 0.35s ease-in both;
+}
+
+@keyframes tarjeta-entrada {
+  0% { opacity: 0; transform: translateY(-8px); box-shadow: 0 0 0 3px rgba(14, 124, 134, 0.5); }
+  30% { opacity: 1; transform: translateY(0); }
+  100% { box-shadow: 0 0 0 3px rgba(14, 124, 134, 0); }
+}
+
+.tarjeta-entrada {
+  animation: tarjeta-entrada 1.6s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .celebra-fondo, .celebra-tarjeta, .celebra-circulo, .celebra-emoji, .celebra-check,
+  .celebra-aviso, .tarjeta-salida, .tarjeta-entrada {
+    animation: none;
+  }
+
+  .celebra-trazo {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+
+  .celebra-onda, .celebra-particula {
+    display: none;
+  }
+
+  .tarjeta-salida {
+    opacity: 0;
+  }
+}
+
+/* iOS amplía la página al enfocar un campo con letra menor a 16px. */
+@media (max-width: 767px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}

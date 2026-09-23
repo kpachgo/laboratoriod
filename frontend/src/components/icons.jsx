@@ -15,6 +15,14 @@ export function PedidosIcon({ size = 17, stroke = 'currentColor' }) {
   );
 }
 
+export function TrabajosIcon({ size = 17, stroke = 'currentColor' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z" />
+    </svg>
+  );
+}
+
 export function RutasIcon({ size = 17, stroke = 'currentColor' }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -80,6 +88,22 @@ export function UploadIcon({ size = 18, stroke = '#9AA6A3' }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="2" strokeLinecap="round">
       <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+export function MenuIcon({ size = 20, stroke = '#1C2624' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="2" strokeLinecap="round">
+      <path d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+  );
+}
+
+export function CloseIcon({ size = 20, stroke = '#5C6A67' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="2" strokeLinecap="round">
+      <path d="M6 6l12 12M18 6L6 18" />
     </svg>
   );
 }

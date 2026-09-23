@@ -5,12 +5,14 @@ import { subirImagenes } from '../api/imagenes';
 import { useAuth } from '../context/AuthContext';
 import UserMenu from '../components/UserMenu';
 import PhotoPicker from '../components/PhotoPicker';
+import { useCelebracion } from '../components/Celebracion';
 import { ToothIcon, BackIcon } from '../components/icons';
 import { todayInputDate } from '../utils/format';
 
 export default function NuevoPedidoClinica() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { celebrar } = useCelebracion();
 
   const [doctores, setDoctores] = useState([]);
   const [doctorId, setDoctorId] = useState('');
@@ -80,7 +82,13 @@ export default function NuevoPedidoClinica() {
         await subirImagenes(pedido.id, fotos);
       }
 
-      navigate('/');
+      await celebrar({
+        emoji: '🦷',
+        tono: 'primario',
+        titulo: '¡Pedido enviado!',
+        detalle: 'El gestor pasará a recogerlo a tu clínica',
+      });
+      navigate('/', { state: { nuevoCasoId: caso.id } });
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo enviar el pedido');
     } finally {
@@ -90,26 +98,27 @@ export default function NuevoPedidoClinica() {
 
   return (
     <div className="min-h-screen bg-bg flex flex-col">
-      <div className="h-16 flex-shrink-0 bg-surface border-b border-border flex items-center justify-between px-8 box-border">
-        <div className="flex items-center gap-3.5">
+      <div className="sticky top-0 z-30 h-14 sm:h-16 flex-shrink-0 bg-surface border-b border-border flex items-center justify-between gap-3 px-4 sm:px-8 box-border">
+        <div className="flex items-center gap-3.5 min-w-0">
           <button
             onClick={() => navigate('/')}
-            className="flex w-8 h-8 rounded-lg items-center justify-center border border-border"
+            className="flex w-9 h-9 sm:w-8 sm:h-8 flex-shrink-0 rounded-lg items-center justify-center border border-border"
+            aria-label="Volver"
           >
             <BackIcon />
           </button>
-          <div className="flex items-center gap-2.5">
-            <div className="w-[30px] h-[30px] rounded-lg bg-primary flex items-center justify-center">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-[30px] h-[30px] rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
               <ToothIcon size={15} />
             </div>
-            <div className="font-display text-[15px] font-semibold">Nuevo pedido</div>
+            <div className="font-display text-[15px] font-semibold truncate">Nuevo pedido</div>
           </div>
         </div>
-        <UserMenu nombre={user?.nombre} subtitle="Clínica" onLogout={() => { logout(); navigate('/login'); }} align="right" />
+        <UserMenu nombre={user?.nombre} subtitle="Clínica" onLogout={() => { logout(); navigate('/login'); }} align="right" compact />
       </div>
 
-      <form onSubmit={handleSubmit} className="flex-grow flex justify-center p-8 overflow-y-auto">
-        <div className="w-[560px] flex flex-col gap-4">
+      <form onSubmit={handleSubmit} className="flex-grow flex justify-center p-4 sm:p-8 overflow-y-auto">
+        <div className="w-full max-w-[560px] flex flex-col gap-4">
           <div>
             <div className="font-display text-[20px] font-semibold">Enviar trabajo al laboratorio</div>
             <div className="text-[13px] text-text-faint mt-0.5">Se creará un caso nuevo con esta primera prueba</div>
@@ -127,7 +136,7 @@ export default function NuevoPedidoClinica() {
                     <option key={d.id} value={d.id}>{d.nombre}</option>
                   ))}
                 </select>
-                <button type="button" onClick={() => setUsarDoctorNuevo(true)} className="text-xs text-primary text-left font-semibold">
+                <button type="button" onClick={() => setUsarDoctorNuevo(true)} className="text-[13px] sm:text-xs py-1 text-primary text-left font-semibold">
                   + Registrar un doctor nuevo
                 </button>
               </>
@@ -141,7 +150,7 @@ export default function NuevoPedidoClinica() {
                   onChange={(e) => setDoctorNuevo(e.target.value)}
                 />
                 {doctores.length > 0 && (
-                  <button type="button" onClick={() => setUsarDoctorNuevo(false)} className="text-xs text-primary text-left font-semibold">
+                  <button type="button" onClick={() => setUsarDoctorNuevo(false)} className="text-[13px] sm:text-xs py-1 text-primary text-left font-semibold">
                     Usar un doctor ya registrado
                   </button>
                 )}
@@ -155,7 +164,7 @@ export default function NuevoPedidoClinica() {
               <label className="field-label">Paciente</label>
               <input className="field-input" type="text" placeholder="Nombre del paciente" value={pacienteNombre} onChange={(e) => setPacienteNombre(e.target.value)} />
             </div>
-            <div className="grid grid-cols-2 gap-3.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <div>
                 <label className="field-label">Tipo de trabajo</label>
                 <input className="field-input" type="text" placeholder="Corona, puente, placa..." value={tipoTrabajo} onChange={(e) => setTipoTrabajo(e.target.value)} />

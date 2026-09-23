@@ -112,13 +112,16 @@ CREATE TABLE pedidos (
                              NOT NULL DEFAULT 'en_proceso',   -- estado del trabajo en laboratorio
     etapa_logistica     ENUM('pendiente_entrega','recibido','en_laboratorio','entregado_en_clinica')
                              NOT NULL DEFAULT 'en_laboratorio', -- recorrido del gestor (cambia con las paradas/rutas)
+    terminado_at        TIMESTAMP NULL DEFAULT NULL,     -- cuándo el técnico marcó el trabajo como terminado
+    terminado_por       INT NULL,                        -- técnico que lo marcó (control interno del laboratorio)
     observaciones       TEXT,
     created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                              ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (caso_id) REFERENCES casos(id)
         ON DELETE CASCADE,
-    FOREIGN KEY (gestor_id) REFERENCES usuarios(id)
+    FOREIGN KEY (gestor_id) REFERENCES usuarios(id),
+    CONSTRAINT fk_pedidos_terminado_por FOREIGN KEY (terminado_por) REFERENCES usuarios(id)
 ) ENGINE=InnoDB;
  
 -- ------------------------------------------------------------
@@ -188,6 +191,21 @@ CREATE TABLE pedido_logistica_historial (
     FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
 ) ENGINE=InnoDB;
 
+-- ------------------------------------------------------------
+-- PEDIDO_COMENTARIOS: notas del laboratorio (técnico/admin) sobre
+-- una prueba concreta; la clínica dueña del pedido puede leerlas.
+-- ------------------------------------------------------------
+CREATE TABLE pedido_comentarios (
+    id           INT AUTO_INCREMENT PRIMARY KEY,
+    pedido_id    INT NOT NULL,
+    usuario_id   INT NOT NULL,
+    texto        TEXT NOT NULL,
+    created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (pedido_id) REFERENCES pedidos(id)
+        ON DELETE CASCADE,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+) ENGINE=InnoDB;
+
 -- Índices útiles para búsquedas frecuentes
 CREATE INDEX idx_casos_clinica ON casos(clinica_id);
 CREATE INDEX idx_caso_items_caso ON caso_items(caso_id);
@@ -197,6 +215,7 @@ CREATE INDEX idx_pedidos_etapa_logistica ON pedidos(etapa_logistica);
 CREATE INDEX idx_pedido_logistica_historial_pedido ON pedido_logistica_historial(pedido_id);
 CREATE INDEX idx_pedidos_etapa ON pedidos(etapa);
 CREATE INDEX idx_imagenes_pedido ON imagenes(pedido_id);
+CREATE INDEX idx_pedido_comentarios_pedido ON pedido_comentarios(pedido_id);
 CREATE INDEX idx_usuarios_clinica ON usuarios(clinica_id);
 CREATE INDEX idx_usuarios_rol ON usuarios(rol);
 CREATE INDEX idx_rutas_gestor_fecha ON rutas(gestor_id, fecha);

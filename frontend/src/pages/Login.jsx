@@ -26,8 +26,8 @@ export default function Login() {
   }
 
   return (
-    <div className="w-full min-h-screen flex items-center justify-center bg-bg">
-      <div className="w-[420px] flex flex-col gap-8">
+    <div className="w-full min-h-screen flex items-center justify-center bg-bg px-4 py-8">
+      <div className="w-full max-w-[420px] flex flex-col gap-8">
         <div className="flex flex-col items-center gap-2.5">
           <div className="w-14 h-14 rounded-2xl bg-primary flex items-center justify-center">
             <ToothIcon size={28} />
@@ -36,7 +36,7 @@ export default function Login() {
           <div className="text-sm text-text-faint">Sistema de pedidos y órdenes de trabajo</div>
         </div>
 
-        <form onSubmit={handleSubmit} className="card p-8 flex flex-col gap-5 shadow-sm">
+        <form onSubmit={handleSubmit} className="card p-6 sm:p-8 flex flex-col gap-5 shadow-sm">
           <div>
             <label htmlFor="usuario" className="field-label">Usuario</label>
             <input
@@ -75,7 +75,7 @@ export default function Login() {
           </button>
         </form>
 
-        <div className="flex items-center justify-center gap-2 text-xs text-text-muted">
+        <div className="flex items-center justify-center flex-wrap gap-x-2 gap-y-1 text-center text-xs text-text-muted">
           <span>Acceso para personal del laboratorio</span>
           <span className="w-[3px] h-[3px] rounded-full bg-dashed" />
           <span>y clínicas asociadas</span>

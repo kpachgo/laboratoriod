@@ -15,10 +15,12 @@ import AsignarRutas from './pages/AsignarRutas';
 import Clinicas from './pages/Clinicas';
 import Usuarios from './pages/Usuarios';
 import Reportes from './pages/Reportes';
+import Trabajos from './pages/Trabajos';
 
 function HomeRedirect() {
   const { user } = useAuth();
   if (user?.rol === 'clinica') return <PortalClinica />;
+  if (user?.rol === 'tecnico') return <Navigate to="/trabajos" replace />;
   return <Dashboard />;
 }
 
@@ -84,6 +86,15 @@ export default function App() {
         element={
           <ProtectedRoute roles={['admin', 'tecnico', 'gestor']}>
             <NuevaPrueba />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/trabajos"
+        element={
+          <ProtectedRoute roles={['admin', 'tecnico']}>
+            <Trabajos />
           </ProtectedRoute>
         }
       />

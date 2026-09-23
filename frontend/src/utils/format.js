@@ -8,6 +8,20 @@ export function formatFecha(value) {
   return `${String(d.getDate()).padStart(2, '0')} ${MESES[d.getMonth()]}`;
 }
 
+// "23 sep, 14:05" para registros con hora (comentarios, etc.).
+export function formatFechaHora(value) {
+  if (!value) return '—';
+  const d = new Date(value.replace(' ', 'T'));
+  if (Number.isNaN(d.getTime())) return value;
+  return `${formatFecha(value)}, ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+// Fecha de entrega estimada de una prueba, con el nombre de la prueba (cada prueba tiene la suya).
+export function textoEntrega(prueba) {
+  if (!prueba?.fecha_entrega_est) return 'Por definir';
+  return `${formatFecha(prueba.fecha_entrega_est)} · ${prueba.etapa}`;
+}
+
 export function toInputDate(value) {
   if (!value) return '';
   return value.slice(0, 10);

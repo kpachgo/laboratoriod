@@ -5,6 +5,7 @@ import { subirImagenes } from '../api/imagenes';
 import { useAuth } from '../context/AuthContext';
 import UserMenu from '../components/UserMenu';
 import PhotoPicker from '../components/PhotoPicker';
+import { useCelebracion } from '../components/Celebracion';
 import { ToothIcon, BackIcon, InfoIcon } from '../components/icons';
 import { formatFecha, todayInputDate } from '../utils/format';
 
@@ -18,6 +19,7 @@ export default function NuevaPruebaClinica() {
   const { id } = useParams();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { celebrar } = useCelebracion();
 
   const [caso, setCaso] = useState(null);
   const [totalPruebas, setTotalPruebas] = useState(0);
@@ -61,7 +63,13 @@ export default function NuevaPruebaClinica() {
         await subirImagenes(pedido.id, fotos);
       }
 
-      navigate('/');
+      await celebrar({
+        emoji: '🦷',
+        tono: 'primario',
+        titulo: '¡Prueba enviada!',
+        detalle: `${nombrePrueba(totalPruebas + 1)} de ${caso.paciente_nombre || 'este caso'}. El gestor pasará a recogerla`,
+      });
+      navigate('/', { state: { nuevoCasoId: Number(id) } });
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo enviar la prueba');
     } finally {
@@ -73,26 +81,27 @@ export default function NuevaPruebaClinica() {
 
   return (
     <div className="min-h-screen bg-bg flex flex-col">
-      <div className="h-16 flex-shrink-0 bg-surface border-b border-border flex items-center justify-between px-8 box-border">
-        <div className="flex items-center gap-3.5">
+      <div className="sticky top-0 z-30 h-14 sm:h-16 flex-shrink-0 bg-surface border-b border-border flex items-center justify-between gap-3 px-4 sm:px-8 box-border">
+        <div className="flex items-center gap-3.5 min-w-0">
           <button
             onClick={() => navigate('/')}
-            className="flex w-8 h-8 rounded-lg items-center justify-center border border-border"
+            className="flex w-9 h-9 sm:w-8 sm:h-8 flex-shrink-0 rounded-lg items-center justify-center border border-border"
+            aria-label="Volver"
           >
             <BackIcon />
           </button>
-          <div className="flex items-center gap-2.5">
-            <div className="w-[30px] h-[30px] rounded-lg bg-primary flex items-center justify-center">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-[30px] h-[30px] rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
               <ToothIcon size={15} />
             </div>
-            <div className="font-display text-[15px] font-semibold">Nueva prueba</div>
+            <div className="font-display text-[15px] font-semibold truncate">Nueva prueba</div>
           </div>
         </div>
-        <UserMenu nombre={user?.nombre} subtitle="Clínica" onLogout={() => { logout(); navigate('/login'); }} align="right" />
+        <UserMenu nombre={user?.nombre} subtitle="Clínica" onLogout={() => { logout(); navigate('/login'); }} align="right" compact />
       </div>
 
-      <div className="flex-grow flex justify-center p-8 overflow-y-auto">
-        <div className="w-[560px] flex flex-col gap-4">
+      <div className="flex-grow flex justify-center p-4 sm:p-8 overflow-y-auto">
+        <div className="w-full max-w-[560px] flex flex-col gap-4">
           {loading && <div className="text-sm text-text-muted">Cargando...</div>}
           {!loading && !caso && <div className="text-sm text-red-600">No se encontró el caso.</div>}
 
@@ -121,8 +130,8 @@ export default function NuevaPruebaClinica() {
                 </div>
               </div>
 
-              <div className="bg-primary-light rounded-xl px-4 py-3 flex items-center gap-2.5">
-                <InfoIcon />
+              <div className="bg-primary-light rounded-xl px-4 py-3 flex items-start sm:items-center gap-2.5">
+                <span className="flex-shrink-0 mt-0.5 sm:mt-0"><InfoIcon /></span>
                 <span className="text-[12.5px] text-primary-dark">
                   Esta prueba se agrega al caso C-{caso.id}. Los datos del doctor, paciente y trabajo ya están guardados.
                 </span>

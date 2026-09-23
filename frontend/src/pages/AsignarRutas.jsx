@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import api from '../api/client';
 import Layout from '../components/Layout';
 import StatusBadge, { LogisticaBadge } from '../components/StatusBadge';
+import { useCelebracion, esperar } from '../components/Celebracion';
 import { formatFecha, todayInputDate } from '../utils/format';
 
 const TIPO_STYLE = {
@@ -21,6 +22,12 @@ export default function AsignarRutas() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Tarjeta que se está yendo de su lista ('pedido-<id>' o 'parada-<id>') y pedido recién agregado a la ruta.
+  const [saliendo, setSaliendo] = useState(null);
+  const [recienAsignado, setRecienAsignado] = useState(null);
+  const [clinica, setClinica] = useState('');
+  const [verPendientes, setVerPendientes] = useState(false);
+  const { aviso } = useCelebracion();
 
   useEffect(() => {
     api.get('/usuarios').then(({ data }) => {
@@ -77,8 +84,16 @@ export default function AsignarRutas() {
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo completar la acción');
     } finally {
+      setSaliendo(null);
       setBusy(false);
     }
+  }
+
+  // Anima la salida de la tarjeta y avisa, antes de que run() recargue las listas.
+  async function confirmar(clave, emoji, texto) {
+    setSaliendo(clave);
+    aviso({ emoji, texto });
+    await esperar(300);
   }
 
   function asignar(pedido, tipo) {
@@ -98,6 +113,12 @@ export default function AsignarRutas() {
         tipo,
         orden: ruta?.paradas?.length ?? 0,
       });
+      setRecienAsignado(pedido.id);
+      await confirmar(
+        `pedido-${pedido.id}`,
+        tipo === 'recoger' ? '🚚' : '📦',
+        `${tipo === 'recoger' ? 'Recogida' : 'Entrega'} asignada a ${gestorNombre}`
+      );
     });
   }
 
@@ -107,13 +128,32 @@ export default function AsignarRutas() {
 
   // Mueve la parada a la ruta del gestor y la fecha elegidos arriba.
   function reasignar(parada) {
-    return run(() => api.post(`/ruta-paradas/${parada.id}/reasignar`, { gestorId: Number(gestorId), fecha }));
+    return run(async () => {
+      await api.post(`/ruta-paradas/${parada.id}/reasignar`, { gestorId: Number(gestorId), fecha });
+      setRecienAsignado(parada.pedido_id);
+      await confirmar(`parada-${parada.id}`, '🔁', `Parada reasignada a ${gestorNombre}`);
+    });
   }
 
   const gestorNombre = gestores.find((g) => String(g.id) === gestorId)?.nombre ?? 'gestor';
   const rutaCerrada = ruta?.estado === 'completada';
   const puedeAsignar = Boolean(gestorId) && !rutaCerrada && !busy;
-  const pendientesFuera = pendientes.filter((p) => p.ruta_id !== ruta?.id);
+  const pendientesFueraTodas = pendientes.filter((p) => p.ruta_id !== ruta?.id);
+
+  // Clínicas con algo por recoger, entregar o reasignar, con cuántos pedidos tiene cada una.
+  const conteoPorClinica = new Map();
+  for (const p of [...porRecoger, ...porEntregar, ...pendientesFueraTodas]) {
+    conteoPorClinica.set(p.clinica_nombre, (conteoPorClinica.get(p.clinica_nombre) || 0) + 1);
+  }
+  const clinicas = Array.from(conteoPorClinica, ([nombre, total]) => ({ nombre, total }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+  const deLaClinica = (p) => !clinica || p.clinica_nombre === clinica;
+  const recogerFiltrados = porRecoger.filter(deLaClinica);
+  const entregarFiltrados = porEntregar.filter(deLaClinica);
+  const pendientesFuera = pendientesFueraTodas.filter(deLaClinica);
+  const hoy = todayInputDate();
+  const atrasadas = pendientesFuera.filter((p) => p.ruta_fecha < hoy).length;
 
   return (
     <Layout>
@@ -122,10 +162,10 @@ export default function AsignarRutas() {
           <div className="font-display text-[22px] font-semibold">Asignar recogidas y entregas</div>
           <div className="text-[13px] text-text-faint mt-0.5">Elige un gestor y una fecha, y asígnale los pedidos de su ruta</div>
         </div>
-        <div className="flex gap-2.5">
+        <div className="grid grid-cols-1 sm:flex gap-2.5 w-full sm:w-auto">
           <div>
             <label className="field-label">Gestor</label>
-            <select className="field-input w-56" value={gestorId} onChange={(e) => setGestorId(e.target.value)}>
+            <select className="field-input sm:w-56" value={gestorId} onChange={(e) => setGestorId(e.target.value)}>
               {gestores.length === 0 && <option value="">Sin gestores activos</option>}
               {gestores.map((g) => (
                 <option key={g.id} value={g.id}>{g.nombre}</option>
@@ -134,7 +174,18 @@ export default function AsignarRutas() {
           </div>
           <div>
             <label className="field-label">Fecha de la ruta</label>
-            <input type="date" className="field-input w-44" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+            <input type="date" className="field-input sm:w-44" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+          </div>
+          <div>
+            <label className="field-label">Clínica</label>
+            <select className="field-input sm:w-52" value={clinica} onChange={(e) => setClinica(e.target.value)}>
+              <option value="">Todas las clínicas</option>
+              {clinicas.map((c) => (
+                <option key={c.nombre} value={c.nombre}>{c.nombre} ({c.total})</option>
+              ))}
+              {/* Si ya se asignó todo lo de la clínica elegida, se mantiene en la lista para no perder el filtro. */}
+              {clinica && !clinicas.some((c) => c.nombre === clinica) && <option value={clinica}>{clinica} (0)</option>}
+            </select>
           </div>
         </div>
       </div>
@@ -148,22 +199,30 @@ export default function AsignarRutas() {
         <Columna
           titulo="Por recoger en clínica"
           ayuda="Pedidos que la clínica envió y el gestor aún no retira."
-          vacio="No hay pedidos pendientes de recoger."
+          vacio={clinica ? `No hay pedidos de ${clinica} pendientes de recoger.` : 'No hay pedidos pendientes de recoger.'}
         >
-          {porRecoger.map((p) => (
-            <PedidoCard key={p.id} pedido={p} accion={`Asignar recogida a ${gestorNombre}`} disabled={!puedeAsignar} onClick={() => asignar(p, 'recoger')} />
+          {recogerFiltrados.map((p) => (
+            <PedidoCard
+              key={p.id}
+              pedido={p}
+              saliendo={saliendo === `pedido-${p.id}`}
+              accion={`Asignar recogida a ${gestorNombre}`}
+              disabled={!puedeAsignar}
+              onClick={() => asignar(p, 'recoger')}
+            />
           ))}
         </Columna>
 
         <Columna
           titulo="Por entregar a clínica"
           ayuda="Pedidos que están en el laboratorio y deben volver a su clínica. Los terminados aparecen primero."
-          vacio="No hay pedidos en laboratorio por entregar."
+          vacio={clinica ? `No hay pedidos de ${clinica} por entregar.` : 'No hay pedidos en laboratorio por entregar.'}
         >
-          {porEntregar.map((p) => (
+          {entregarFiltrados.map((p) => (
             <PedidoCard
               key={p.id}
               pedido={p}
+              saliendo={saliendo === `pedido-${p.id}`}
               mostrarListo
               accion={`Asignar entrega a ${gestorNombre}`}
               disabled={!puedeAsignar}
@@ -181,7 +240,7 @@ export default function AsignarRutas() {
             {ruta?.paradas.map((p) => {
               const style = TIPO_STYLE[p.tipo];
               return (
-                <div key={p.id} className="card p-3.5 flex flex-col gap-2">
+                <div key={p.id} className={`card p-3.5 flex flex-col gap-2 ${p.pedido_id === recienAsignado ? 'tarjeta-entrada' : ''}`}>
                   <div className="flex items-center justify-between">
                     <span className="px-2.5 py-0.5 rounded-full text-[10.5px] font-bold" style={{ background: style.bg, color: style.color }}>
                       {style.label}
@@ -207,23 +266,55 @@ export default function AsignarRutas() {
             })}
           </Columna>
 
-          <Columna
-            titulo="Pendientes en otras fechas o gestores"
-            ayuda="Paradas que aún no se completan, sin importar su fecha. Si su gestor ya no puede atenderlas, reasígnalas al gestor y la fecha elegidos arriba."
-            vacio="No hay paradas pendientes en otras rutas."
-          >
-            {pendientesFuera.map((p) => (
-              <PendienteCard
-                key={p.id}
-                parada={p}
-                accion={`Reasignar a ${gestorNombre}`}
-                disabled={!puedeAsignar}
-                busy={busy}
-                onReasignar={() => reasignar(p)}
-                onQuitar={() => quitar(p)}
-              />
-            ))}
-          </Columna>
+          <div className="card overflow-hidden">
+            <button
+              onClick={() => setVerPendientes((v) => !v)}
+              className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left"
+              aria-expanded={verPendientes}
+            >
+              <div className="min-w-0">
+                <div className="text-sm font-bold">Pendientes en otras fechas o gestores</div>
+                <div className="text-xs mt-0.5 flex items-center gap-1.5 flex-wrap">
+                  <span className="text-text-faint">
+                    {pendientesFuera.length === 0
+                      ? 'Ninguna parada pendiente'
+                      : `${pendientesFuera.length} parada${pendientesFuera.length === 1 ? '' : 's'} sin completar`}
+                  </span>
+                  {atrasadas > 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-[#F3E8E8] text-red-600 text-[10.5px] font-bold">
+                      {atrasadas} atrasada{atrasadas === 1 ? '' : 's'}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <span className={`text-text-muted text-xs transition-transform ${verPendientes ? 'rotate-180' : ''}`}>▾</span>
+            </button>
+
+            {verPendientes && (
+              <div className="border-t border-divider p-4 flex flex-col gap-3 bg-bg">
+                <div className="text-xs text-text-faint">
+                  Paradas que aún no se completan, sin importar su fecha. Si su gestor ya no puede atenderlas, reasígnalas al gestor y la fecha elegidos arriba.
+                </div>
+                {pendientesFuera.length === 0 && (
+                  <div className="text-[13px] text-text-muted">
+                    {clinica ? `No hay paradas de ${clinica} pendientes en otras rutas.` : 'No hay paradas pendientes en otras rutas.'}
+                  </div>
+                )}
+                {pendientesFuera.map((p) => (
+                  <PendienteCard
+                    key={p.id}
+                    parada={p}
+                    saliendo={saliendo === `parada-${p.id}`}
+                    accion={`Reasignar a ${gestorNombre}`}
+                    disabled={!puedeAsignar}
+                    busy={busy}
+                    onReasignar={() => reasignar(p)}
+                    onQuitar={() => quitar(p)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </Layout>
@@ -245,16 +336,16 @@ function Columna({ titulo, ayuda, vacio, vacioActivo, children }) {
   );
 }
 
-function PendienteCard({ parada, accion, disabled, busy, onReasignar, onQuitar }) {
+function PendienteCard({ parada, saliendo, accion, disabled, busy, onReasignar, onQuitar }) {
   const style = TIPO_STYLE[parada.tipo];
   const atrasada = parada.ruta_fecha < todayInputDate();
   return (
-    <div className="card p-3.5 flex flex-col gap-2">
+    <div className={`card p-3.5 flex flex-col gap-2 ${saliendo ? 'tarjeta-salida' : ''}`}>
       <div className="flex items-center justify-between">
         <span className="px-2.5 py-0.5 rounded-full text-[10.5px] font-bold" style={{ background: style.bg, color: style.color }}>
           {style.label}
         </span>
-        <span className={`text-[11.5px] font-bold ${atrasada ? 'text-red-600' : 'text-text-muted'}`}>
+        <span className={`text-[11.5px] font-bold text-right ${atrasada ? 'text-red-600' : 'text-text-muted'}`}>
           {atrasada ? 'Atrasada · ' : ''}Ruta del {formatFecha(parada.ruta_fecha)}
         </span>
       </div>
@@ -270,7 +361,7 @@ function PendienteCard({ parada, accion, disabled, busy, onReasignar, onQuitar }
         <button
           disabled={disabled}
           onClick={onReasignar}
-          className="flex-grow h-9 rounded-input bg-primary text-white text-[12.5px] font-semibold disabled:opacity-50"
+          className="flex-grow h-10 md:h-9 rounded-input bg-primary text-white text-[12.5px] font-semibold disabled:opacity-50"
         >
           {accion}
         </button>
@@ -282,10 +373,10 @@ function PendienteCard({ parada, accion, disabled, busy, onReasignar, onQuitar }
   );
 }
 
-function PedidoCard({ pedido, accion, disabled, onClick, mostrarListo }) {
+function PedidoCard({ pedido, saliendo, accion, disabled, onClick, mostrarListo }) {
   const listo = pedido.estado === 'finalizado';
   return (
-    <div className="card p-3.5 flex flex-col gap-2">
+    <div className={`card p-3.5 flex flex-col gap-2 ${saliendo ? 'tarjeta-salida' : ''}`}>
       <div className="flex items-center justify-between">
         <span className="text-[13.5px] font-bold text-primary-dark">Caso C-{pedido.caso_id}</span>
         <span className="text-xs text-text-muted font-semibold">Prueba #{pedido.id}</span>
@@ -296,7 +387,7 @@ function PedidoCard({ pedido, accion, disabled, onClick, mostrarListo }) {
         <div className="text-xs text-text-muted">Entrega estimada: {formatFecha(pedido.fecha_entrega_est)}</div>
       )}
       {mostrarListo && (
-        <div className="flex items-center gap-2 text-xs text-text-faint">
+        <div className="flex items-center flex-wrap gap-2 text-xs text-text-faint">
           Trabajo en laboratorio: <StatusBadge estado={pedido.estado} />
           {listo && <span className="font-bold text-[#2F8F5B]">Listo para entregar</span>}
         </div>
@@ -304,7 +395,7 @@ function PedidoCard({ pedido, accion, disabled, onClick, mostrarListo }) {
       <button
         disabled={disabled}
         onClick={onClick}
-        className="h-9 rounded-input bg-primary text-white text-[12.5px] font-semibold disabled:opacity-50"
+        className="h-10 md:h-9 rounded-input bg-primary text-white text-[12.5px] font-semibold disabled:opacity-50"
       >
         {accion}
       </button>

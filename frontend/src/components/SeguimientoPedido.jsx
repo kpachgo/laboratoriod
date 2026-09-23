@@ -16,6 +16,7 @@ export const PASOS_SEGUIMIENTO = [
     emoji: '🚚',
     label: 'Enviado con gestor',
     gestorDe: 'gestor_recogida_nombre',
+    enTransito: true,
     detalle: (gestor) => `${elGestor(gestor)} lo retiró de la clínica y va en camino al laboratorio, que debe confirmar su recepción`,
   },
   { emoji: '🔬', label: 'En laboratorio', detalle: 'Está en el laboratorio, trabajo en proceso' },
@@ -23,6 +24,7 @@ export const PASOS_SEGUIMIENTO = [
     emoji: '🚐',
     label: 'Enviado a clínica',
     gestorDe: 'gestor_entrega_nombre',
+    enTransito: true,
     detalle: (gestor) => `${elGestor(gestor)} lo lleva de vuelta a la clínica`,
   },
   { emoji: '📦', label: 'Entregado en clínica', detalle: 'Entregado en la clínica' },
@@ -43,6 +45,34 @@ export function gestorDelPaso(paso, pedido) {
   return paso.gestorDe ? pedido[paso.gestorDe] ?? null : null;
 }
 
+// Línea entre dos pasos. Los tramos recorridos se rellenan de verde al aparecer; el tramo
+// hacia el siguiente paso se dibuja como ruta en movimiento y, si la pieza va en camino
+// con el gestor, lleva encima el vehículo avanzando.
+function Tramo({ indice, completo, activo, vehiculo }) {
+  return (
+    <div
+      className="relative h-[3px] flex-grow mt-4 sm:mt-[20px] rounded-full min-w-[6px]"
+      style={{ background: PENDING }}
+    >
+      {completo && (
+        <div
+          className="seg-fill absolute inset-0 rounded-full"
+          style={{ background: GREEN, animationDelay: `${indice * 180}ms` }}
+        />
+      )}
+      {activo && <div className="seg-flow absolute inset-0 rounded-full" />}
+      {vehiculo && (
+        <div className="seg-vehicle hidden sm:block absolute -top-[22px] text-[18px] leading-none" aria-hidden="true">
+          <span className="seg-bob inline-block">
+            {/* Los emojis de vehículo miran a la izquierda; se voltean para que avancen hacia el siguiente paso. */}
+            <span className="inline-block -scale-x-100">{vehiculo}</span>
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SeguimientoPedido({ pedido }) {
   const paso = pasoActual(pedido);
   const actual = PASOS_SEGUIMIENTO[paso - 1];
@@ -61,10 +91,16 @@ export default function SeguimientoPedido({ pedido }) {
 
           return (
             <div key={p.label} className="flex items-start" style={{ flexGrow: ultimo ? 0 : 1 }}>
-              <div className="flex flex-col items-center gap-1.5 w-[76px]">
+              <div className="flex flex-col items-center gap-1.5 w-[52px] sm:w-[76px]">
                 <div className="relative">
+                  {esActual && (
+                    <span
+                      className="absolute inset-0 rounded-full motion-safe:animate-ping"
+                      style={{ background: PRIMARY, opacity: 0.2 }}
+                    />
+                  )}
                   <div
-                    className="w-11 h-11 rounded-full flex items-center justify-center text-[20px] border-2"
+                    className="relative w-9 h-9 sm:w-11 sm:h-11 rounded-full flex items-center justify-center text-[16px] sm:text-[20px] border-2"
                     style={{
                       background: esActual ? PRIMARY_LIGHT : hecho ? GREEN_LIGHT : '#F5F6F3',
                       borderColor: esActual ? PRIMARY : hecho ? GREEN : PENDING,
@@ -77,29 +113,31 @@ export default function SeguimientoPedido({ pedido }) {
                   </div>
                   {hecho && !esActual && (
                     <div
-                      className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center text-white text-[10px] font-bold"
-                      style={{ background: GREEN }}
+                      className="seg-pop absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center text-white text-[10px] font-bold"
+                      style={{ background: GREEN, animationDelay: `${i * 180 + 150}ms` }}
                     >
                       ✓
                     </div>
                   )}
                 </div>
                 <span
-                  className="text-[11px] font-semibold text-center leading-tight"
+                  className="text-[10px] sm:text-[11px] font-semibold text-center leading-tight"
                   style={{ color: hecho ? DONE_TEXT : PENDING_TEXT }}
                 >
                   {p.label}
                 </span>
                 {gestor && (
-                  <span className="text-[10.5px] text-center leading-tight text-text-muted line-clamp-2" title={gestor}>
+                  <span className="text-[9.5px] sm:text-[10.5px] text-center leading-tight text-text-muted line-clamp-2" title={gestor}>
                     {gestor}
                   </span>
                 )}
               </div>
               {!ultimo && (
-                <div
-                  className="h-[3px] flex-grow mt-[20px] rounded-full min-w-[8px]"
-                  style={{ background: numero < paso ? GREEN : PENDING }}
+                <Tramo
+                  indice={i}
+                  completo={numero < paso}
+                  activo={esActual}
+                  vehiculo={esActual && p.enTransito ? p.emoji : null}
                 />
               )}
             </div>

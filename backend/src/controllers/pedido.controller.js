@@ -6,8 +6,9 @@ const { cambiarEtapaLogistica, SEGUIMIENTO_COLUMNS } = require('../utils/pedidoL
 const BASE_SELECT = `
   SELECT p.*, c.clinica_id AS caso_clinica_id, c.paciente_nombre, c.descripcion AS caso_descripcion,
          c.finalizado_at AS caso_finalizado_at,
-         cl.nombre AS clinica_nombre, g.nombre AS gestor_nombre,
+         cl.nombre AS clinica_nombre, g.nombre AS gestor_nombre, t.nombre AS terminado_por_nombre,
          (SELECT COUNT(*) FROM imagenes i WHERE i.pedido_id = p.id) AS fotos_count,
+         (SELECT COUNT(*) FROM pedido_comentarios pc WHERE pc.pedido_id = p.id) AS comentarios_count,
          (SELECT COUNT(*) FROM ruta_paradas rp WHERE rp.pedido_id = p.id AND rp.estado = 'pendiente') AS paradas_pendientes,
          EXISTS (SELECT 1 FROM ruta_paradas rp JOIN rutas r ON r.id = rp.ruta_id
                  WHERE rp.pedido_id = p.id AND rp.tipo = 'recoger' AND rp.estado = 'completada'
@@ -17,6 +18,7 @@ const BASE_SELECT = `
   JOIN casos c ON c.id = p.caso_id
   JOIN clinicas cl ON cl.id = c.clinica_id
   LEFT JOIN usuarios g ON g.id = p.gestor_id
+  LEFT JOIN usuarios t ON t.id = p.terminado_por
 `;
 
 const listPedidos = asyncHandler(async (req, res) => {
@@ -145,10 +147,54 @@ const recibirEnLaboratorio = asyncHandler(async (req, res) => {
   res.json({ message: 'Pedido recibido en laboratorio' });
 });
 
+// El técnico da por terminado el trabajo de una prueba que está en el laboratorio
+// (queda "Listo para entregar" al asignar rutas). Control interno del laboratorio.
+const terminarTrabajo = asyncHandler(async (req, res) => {
+  const [rows] = await pool.query('SELECT estado, etapa_logistica FROM pedidos WHERE id = ?', [req.params.id]);
+  const pedido = rows[0];
+  if (!pedido) throw new ApiError(404, 'Pedido no encontrado');
+  if (pedido.etapa_logistica !== 'en_laboratorio') {
+    throw new ApiError(400, 'Solo se puede terminar un trabajo que está en el laboratorio');
+  }
+  if (pedido.estado !== 'en_proceso') throw new ApiError(400, 'Este trabajo ya está terminado');
+
+  await pool.query(
+    "UPDATE pedidos SET estado = 'finalizado', terminado_at = NOW(), terminado_por = ? WHERE id = ?",
+    [req.user.id, req.params.id]
+  );
+  res.json({ message: 'Trabajo terminado' });
+});
+
+// Deshace "terminar" (p. ej. se marcó por error o hay que retocar la pieza) mientras siga en el laboratorio.
+const reabrirTrabajo = asyncHandler(async (req, res) => {
+  const [rows] = await pool.query('SELECT estado, etapa_logistica FROM pedidos WHERE id = ?', [req.params.id]);
+  const pedido = rows[0];
+  if (!pedido) throw new ApiError(404, 'Pedido no encontrado');
+  if (pedido.estado !== 'finalizado') throw new ApiError(400, 'Este trabajo no está terminado');
+  if (pedido.etapa_logistica !== 'en_laboratorio') {
+    throw new ApiError(400, 'La pieza ya salió del laboratorio; no se puede reabrir el trabajo');
+  }
+
+  await pool.query(
+    "UPDATE pedidos SET estado = 'en_proceso', terminado_at = NULL, terminado_por = NULL WHERE id = ?",
+    [req.params.id]
+  );
+  res.json({ message: 'Trabajo reabierto' });
+});
+
 const deletePedido = asyncHandler(async (req, res) => {
   const [result] = await pool.query('DELETE FROM pedidos WHERE id = ?', [req.params.id]);
   if (result.affectedRows === 0) throw new ApiError(404, 'Pedido no encontrado');
   res.status(204).send();
 });
 
-module.exports = { listPedidos, getPedido, createPedido, updatePedido, recibirEnLaboratorio, deletePedido };
+module.exports = {
+  listPedidos,
+  getPedido,
+  createPedido,
+  updatePedido,
+  recibirEnLaboratorio,
+  terminarTrabajo,
+  reabrirTrabajo,
+  deletePedido,
+};

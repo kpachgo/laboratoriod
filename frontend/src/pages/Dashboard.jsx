@@ -5,65 +5,34 @@ import { useAuth } from '../context/AuthContext';
 import Layout from '../components/Layout';
 import StatusBadge, { LogisticaBadge } from '../components/StatusBadge';
 import { SearchIcon, PlusIcon } from '../components/icons';
+import PiezasEnCamino from '../components/PiezasEnCamino';
 import { formatFecha } from '../utils/format';
+import FechaEntrega from '../components/FechaEntrega';
 
 const FILTROS_LOGISTICA = [
   { value: '', label: 'Toda la logística' },
-  { value: 'pendiente_entrega', label: 'Pendiente de entregar' },
+  { value: 'pendiente_entrega', label: 'Pendiente de recoger' },
   { value: 'recibido', label: 'Recibido' },
   { value: 'en_laboratorio', label: 'En laboratorio' },
   { value: 'entregado_en_clinica', label: 'Entregado en clínica' },
 ];
 
-const FILTROS = [
-  { value: '', label: 'Todos' },
-  { value: 'en_proceso', label: 'En proceso' },
-  { value: 'finalizado', label: 'Finalizado' },
-  { value: 'entregado', label: 'Entregado' },
-];
-
-const GRID = 'grid-cols-[80px_80px_1fr_1.1fr_1fr_180px_120px_90px]';
+const GRID = 'grid-cols-[70px_70px_1fr_1.1fr_1fr_100px_180px_120px_80px]';
 
 export default function Dashboard() {
+  const { user } = useAuth();
+  // Personal del laboratorio (admin y técnico): recibe las piezas y trabaja lo que está en el laboratorio.
+  const puedeRecibir = user?.rol === 'admin' || user?.rol === 'tecnico';
   const [pedidos, setPedidos] = useState([]);
   const [total, setTotal] = useState(0);
-  const [estado, setEstado] = useState('');
-  const [etapaLogistica, setEtapaLogistica] = useState('');
+  const [etapaLogistica, setEtapaLogistica] = useState(puedeRecibir ? 'en_laboratorio' : '');
   const [busqueda, setBusqueda] = useState('');
   const [loading, setLoading] = useState(true);
-  const [enCamino, setEnCamino] = useState([]);
-  const [recibiendo, setRecibiendo] = useState(null);
-  const [error, setError] = useState('');
   const [version, setVersion] = useState(0);
-  const { user } = useAuth();
-  const puedeRecibir = user?.rol === 'admin' || user?.rol === 'tecnico';
-
-  useEffect(() => {
-    if (!puedeRecibir) return;
-    api
-      .get('/pedidos', { params: { etapaLogistica: 'recibido', limit: 100 } })
-      .then(({ data }) =>
-        setEnCamino(data.data.slice().sort((a, b) => Number(b.gestor_llego_laboratorio) - Number(a.gestor_llego_laboratorio)))
-      );
-  }, [puedeRecibir, version]);
-
-  async function recibir(pedidoId) {
-    setError('');
-    setRecibiendo(pedidoId);
-    try {
-      await api.post(`/pedidos/${pedidoId}/recibir-laboratorio`);
-      setVersion((v) => v + 1);
-    } catch (err) {
-      setError(err.response?.data?.error || 'No se pudo registrar la recepción');
-    } finally {
-      setRecibiendo(null);
-    }
-  }
 
   useEffect(() => {
     setLoading(true);
     const params = { limit: 50 };
-    if (estado) params.estado = estado;
     if (etapaLogistica) params.etapaLogistica = etapaLogistica;
 
     api
@@ -73,7 +42,7 @@ export default function Dashboard() {
         setTotal(data.pagination.total);
       })
       .finally(() => setLoading(false));
-  }, [estado, etapaLogistica, version]);
+  }, [etapaLogistica, version]);
 
   const filtrados = pedidos.filter((p) => {
     if (!busqueda) return true;
@@ -87,13 +56,13 @@ export default function Dashboard() {
 
   return (
     <Layout>
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <div className="font-display text-[22px] font-semibold">Pedidos</div>
           <div className="text-[13px] text-text-faint mt-0.5">{total} pruebas registradas</div>
         </div>
-        <div className="flex gap-2.5">
-          <div className="flex items-center gap-2 bg-surface border border-border rounded-input px-3 h-10 w-60">
+        <div className="flex flex-wrap md:flex-nowrap gap-2.5">
+          <div className="flex items-center gap-2 bg-surface border border-border rounded-input px-3 h-10 w-full md:w-60">
             <SearchIcon />
             <input
               type="text"
@@ -103,6 +72,16 @@ export default function Dashboard() {
               onChange={(e) => setBusqueda(e.target.value)}
             />
           </div>
+          <select
+            className="field-input !h-10 flex-1 min-w-0 md:flex-none md:w-52"
+            value={etapaLogistica}
+            onChange={(e) => setEtapaLogistica(e.target.value)}
+            aria-label="Filtrar por logística"
+          >
+            {FILTROS_LOGISTICA.map((f) => (
+              <option key={f.value} value={f.value}>{f.label}</option>
+            ))}
+          </select>
           <Link
             to="/casos/nuevo"
             className="flex items-center gap-1.5 bg-primary text-white rounded-input px-4 h-10 text-[13px] font-semibold whitespace-nowrap"
@@ -113,76 +92,19 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {error && <div className="text-sm text-red-600">{error}</div>}
-
-      {puedeRecibir && enCamino.length > 0 && (
-        <div className="card p-4 flex flex-col gap-3" style={{ borderLeft: '4px solid #6B3FA0' }}>
-          <div>
-            <div className="text-sm font-bold">🚚 Piezas en camino al laboratorio ({enCamino.length})</div>
-            <div className="text-xs text-text-faint mt-0.5">Cuando la pieza llegue físicamente, confirma su recepción.</div>
-          </div>
-          {enCamino.map((p) => (
-            <div key={p.id} className="flex items-center justify-between gap-3 flex-wrap">
-              <div className="text-[13px] flex items-center gap-2 flex-wrap">
-                <span className="font-bold text-primary-dark">Caso C-{p.caso_id}</span>
-                <span>{p.clinica_nombre}</span>
-                <span className="text-text-muted">{p.paciente_nombre || 'Sin paciente'} · {p.etapa}</span>
-                {p.gestor_llego_laboratorio ? (
-                  <span className="text-[11.5px] font-bold text-[#2F8F5B]">El gestor ya llegó al laboratorio</span>
-                ) : (
-                  <span className="text-[11.5px] text-text-faint">En camino</span>
-                )}
-              </div>
-              <button
-                disabled={recibiendo === p.id}
-                onClick={() => recibir(p.id)}
-                className="h-9 px-4 rounded-input bg-primary text-white text-[12.5px] font-semibold disabled:opacity-50"
-              >
-                {recibiendo === p.id ? 'Registrando...' : 'Recibir en laboratorio'}
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="flex gap-2">
-        {FILTROS.map((f) => (
-          <button
-            key={f.value}
-            onClick={() => setEstado(f.value)}
-            className={`px-3.5 py-1.5 rounded-full text-[12.5px] font-semibold ${
-              estado === f.value ? 'bg-text text-white' : 'bg-surface border border-border text-text-secondary'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex gap-2 flex-wrap">
-        {FILTROS_LOGISTICA.map((f) => (
-          <button
-            key={f.value}
-            onClick={() => setEtapaLogistica(f.value)}
-            className={`px-3.5 py-1.5 rounded-full text-[12.5px] font-semibold ${
-              etapaLogistica === f.value ? 'bg-text text-white' : 'bg-surface border border-border text-text-secondary'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+      {puedeRecibir && <PiezasEnCamino onRecibido={() => setVersion((v) => v + 1)} />}
 
       <div className="card overflow-hidden flex-grow overflow-y-auto">
-        <div className={`grid ${GRID} px-5 py-3 border-b border-divider text-[11.5px] font-bold text-text-muted uppercase tracking-wide`}>
+        <div className={`hidden lg:grid ${GRID} px-5 py-3 border-b border-divider text-[11.5px] font-bold text-text-muted uppercase tracking-wide`}>
           <div>Folio</div>
           <div>Caso</div>
           <div>Etapa</div>
           <div>Clínica</div>
           <div>Paciente</div>
+          <div>Entrega</div>
           <div>Logística</div>
           <div>Estado</div>
-          <div>Fecha</div>
+          <div>Ingreso</div>
         </div>
 
         {loading && <div className="p-6 text-sm text-text-muted">Cargando...</div>}
@@ -194,19 +116,42 @@ export default function Dashboard() {
           <Link
             key={p.id}
             to={`/casos/${p.caso_id}`}
-            className={`grid ${GRID} px-5 py-3.5 border-b border-[#F0F2F1] items-center text-[13.5px] no-underline`}
+            className={`block lg:grid ${GRID} px-4 lg:px-5 py-3.5 border-b border-[#F0F2F1] items-center text-[13.5px] no-underline`}
           >
-            <div className="font-semibold text-text-muted">{p.folio || '—'}</div>
-            <div className="font-bold text-primary-dark">C-{p.caso_id}</div>
-            <div>{p.etapa}</div>
-            <div className="text-text-secondary">{p.clinica_nombre}</div>
-            <div>{p.paciente_nombre || '—'}</div>
-            <div><LogisticaBadge etapa={p.etapa_logistica} /></div>
-            <div><StatusBadge estado={p.estado} /></div>
-            <div className="text-text-muted text-xs">{formatFecha(p.fecha_entrada)}</div>
+            <div className="lg:hidden flex flex-col gap-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-bold text-primary-dark">C-{p.caso_id}</span>
+                  <span className="text-xs font-semibold text-text-muted truncate">{p.folio || '—'}</span>
+                </div>
+                <span className="text-text-muted text-xs flex-shrink-0">{formatFecha(p.fecha_entrada)}</span>
+              </div>
+              <div className="font-semibold">{p.paciente_nombre || 'Sin paciente'} · {p.etapa}</div>
+              <div className="text-[12.5px] text-text-secondary">{p.clinica_nombre}</div>
+              <div className="text-[12.5px] text-text-muted flex items-center gap-1.5">
+                Entrega: <FechaEntrega pedido={p} />
+              </div>
+              <div className="flex flex-wrap gap-1.5 mt-0.5">
+                <LogisticaBadge etapa={p.etapa_logistica} />
+                <StatusBadge estado={p.estado} />
+              </div>
+            </div>
+
+            <div className="hidden lg:contents">
+              <div className="font-semibold text-text-muted">{p.folio || '—'}</div>
+              <div className="font-bold text-primary-dark">C-{p.caso_id}</div>
+              <div>{p.etapa}</div>
+              <div className="text-text-secondary">{p.clinica_nombre}</div>
+              <div>{p.paciente_nombre || '—'}</div>
+              <div><FechaEntrega pedido={p} /></div>
+              <div><LogisticaBadge etapa={p.etapa_logistica} /></div>
+              <div><StatusBadge estado={p.estado} /></div>
+              <div className="text-text-muted text-xs">{formatFecha(p.fecha_entrada)}</div>
+            </div>
           </Link>
         ))}
       </div>
     </Layout>
   );
 }
+
