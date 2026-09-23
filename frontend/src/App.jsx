@@ -5,9 +5,11 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import NuevoCaso from './pages/NuevoCaso';
 import CasoDetalle from './pages/CasoDetalle';
+import DetalleCasoClinica from './pages/DetalleCasoClinica';
 import NuevaPrueba from './pages/NuevaPrueba';
 import PortalClinica from './pages/PortalClinica';
 import NuevoPedidoClinica from './pages/NuevoPedidoClinica';
+import NuevaPruebaClinica from './pages/NuevaPruebaClinica';
 import VistaGestor from './pages/VistaGestor';
 import AsignarRutas from './pages/AsignarRutas';
 import Clinicas from './pages/Clinicas';
@@ -18,6 +20,11 @@ function HomeRedirect() {
   const { user } = useAuth();
   if (user?.rol === 'clinica') return <PortalClinica />;
   return <Dashboard />;
+}
+
+function CasoRedirect() {
+  const { user } = useAuth();
+  return user?.rol === 'clinica' ? <DetalleCasoClinica /> : <CasoDetalle />;
 }
 
 function RutasRedirect() {
@@ -47,6 +54,14 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/nueva-prueba/:id"
+        element={
+          <ProtectedRoute roles={['clinica']}>
+            <NuevaPruebaClinica />
+          </ProtectedRoute>
+        }
+      />
 
       <Route
         path="/casos/nuevo"
@@ -59,8 +74,8 @@ export default function App() {
       <Route
         path="/casos/:id"
         element={
-          <ProtectedRoute roles={['admin', 'tecnico', 'gestor']}>
-            <CasoDetalle />
+          <ProtectedRoute roles={['admin', 'tecnico', 'gestor', 'clinica']}>
+            <CasoRedirect />
           </ProtectedRoute>
         }
       />

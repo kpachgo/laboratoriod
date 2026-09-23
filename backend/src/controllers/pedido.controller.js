@@ -1,16 +1,18 @@
 const pool = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
-const { cambiarEtapaLogistica } = require('../utils/pedidoLogistica');
+const { cambiarEtapaLogistica, SEGUIMIENTO_COLUMNS } = require('../utils/pedidoLogistica');
 
 const BASE_SELECT = `
   SELECT p.*, c.clinica_id AS caso_clinica_id, c.paciente_nombre, c.descripcion AS caso_descripcion,
+         c.finalizado_at AS caso_finalizado_at,
          cl.nombre AS clinica_nombre, g.nombre AS gestor_nombre,
          (SELECT COUNT(*) FROM imagenes i WHERE i.pedido_id = p.id) AS fotos_count,
          (SELECT COUNT(*) FROM ruta_paradas rp WHERE rp.pedido_id = p.id AND rp.estado = 'pendiente') AS paradas_pendientes,
          EXISTS (SELECT 1 FROM ruta_paradas rp JOIN rutas r ON r.id = rp.ruta_id
                  WHERE rp.pedido_id = p.id AND rp.tipo = 'recoger' AND rp.estado = 'completada'
-                   AND r.estado = 'completada') AS gestor_llego_laboratorio
+                   AND r.estado = 'completada') AS gestor_llego_laboratorio,
+         ${SEGUIMIENTO_COLUMNS}
   FROM pedidos p
   JOIN casos c ON c.id = p.caso_id
   JOIN clinicas cl ON cl.id = c.clinica_id
@@ -101,6 +103,9 @@ const createPedido = asyncHandler(async (req, res) => {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [casoId, folio ?? null, etapa, fechaEntrada, fechaEntregaEst ?? null, gestorIdFinal, etapaLogistica, observaciones ?? null]
   );
+
+  // Una prueba nueva significa que el trabajo sigue en curso: si la clínica ya lo había finalizado, se reabre.
+  await pool.query('UPDATE casos SET finalizado_at = NULL WHERE id = ? AND finalizado_at IS NOT NULL', [casoId]);
 
   res.status(201).json({ id: result.insertId });
 });

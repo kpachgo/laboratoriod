@@ -6,25 +6,48 @@ const PENDING = '#DCE2DF';
 const PENDING_TEXT = '#9AA6A3';
 const DONE_TEXT = '#1C2624';
 
+const elGestor = (gestor) => (gestor ? `El gestor ${gestor}` : 'El gestor');
+
+// `gestorDe` indica qué campo del pedido trae el nombre del gestor de ese paso;
+// `detalle` puede ser una función para incluir ese nombre en el texto.
 export const PASOS_SEGUIMIENTO = [
-  { emoji: '🏥', label: 'Pendiente de entregar', detalle: 'Esperando que el gestor lo retire de la clínica' },
-  { emoji: '🚚', label: 'Recibido', detalle: 'El gestor lo retiró de la clínica y va en camino al laboratorio, que debe confirmar su recepción' },
+  { emoji: '🏥', label: 'Pendiente de enviar', detalle: 'Esperando que el gestor lo retire de la clínica' },
+  {
+    emoji: '🚚',
+    label: 'Enviado con gestor',
+    gestorDe: 'gestor_recogida_nombre',
+    detalle: (gestor) => `${elGestor(gestor)} lo retiró de la clínica y va en camino al laboratorio, que debe confirmar su recepción`,
+  },
   { emoji: '🔬', label: 'En laboratorio', detalle: 'Está en el laboratorio, trabajo en proceso' },
-  { emoji: '✅', label: 'Finalizado', detalle: 'Trabajo terminado, listo para regresar a la clínica' },
+  {
+    emoji: '🚐',
+    label: 'Enviado a clínica',
+    gestorDe: 'gestor_entrega_nombre',
+    detalle: (gestor) => `${elGestor(gestor)} lo lleva de vuelta a la clínica`,
+  },
   { emoji: '📦', label: 'Entregado en clínica', detalle: 'Entregado en la clínica' },
 ];
 
-// Paso (1 a 5) en el que va el pedido, combinando su recorrido logístico y el estado del laboratorio.
-export function pasoActual({ etapa_logistica: etapa, estado }) {
+// Paso (1 a 5) en el que va el pedido, según su recorrido logístico. Cada prueba de un caso
+// recorre los cinco pasos por separado; al crear una nueva prueba el proceso vuelve a empezar.
+// Mientras esté en el laboratorio, pasa al paso 4 cuando tiene una entrega asignada a un gestor.
+export function pasoActual({ etapa_logistica: etapa, entrega_en_curso: entregaEnCurso }) {
   if (etapa === 'entregado_en_clinica') return 5;
-  if (etapa === 'en_laboratorio') return estado === 'en_proceso' ? 3 : 4;
+  if (etapa === 'en_laboratorio') return entregaEnCurso ? 4 : 3;
   if (etapa === 'recibido') return 2;
   return 1;
+}
+
+// Nombre del gestor que interviene en un paso (null si el paso no lo tiene o aún no se conoce).
+export function gestorDelPaso(paso, pedido) {
+  return paso.gestorDe ? pedido[paso.gestorDe] ?? null : null;
 }
 
 export default function SeguimientoPedido({ pedido }) {
   const paso = pasoActual(pedido);
   const actual = PASOS_SEGUIMIENTO[paso - 1];
+  const gestorActual = gestorDelPaso(actual, pedido);
+  const detalleActual = typeof actual.detalle === 'function' ? actual.detalle(gestorActual) : actual.detalle;
 
   return (
     <div className="flex flex-col gap-3">
@@ -34,6 +57,7 @@ export default function SeguimientoPedido({ pedido }) {
           const hecho = numero <= paso;
           const esActual = numero === paso && paso < PASOS_SEGUIMIENTO.length;
           const ultimo = i === PASOS_SEGUIMIENTO.length - 1;
+          const gestor = hecho ? gestorDelPaso(p, pedido) : null;
 
           return (
             <div key={p.label} className="flex items-start" style={{ flexGrow: ultimo ? 0 : 1 }}>
@@ -66,6 +90,11 @@ export default function SeguimientoPedido({ pedido }) {
                 >
                   {p.label}
                 </span>
+                {gestor && (
+                  <span className="text-[10.5px] text-center leading-tight text-text-muted line-clamp-2" title={gestor}>
+                    {gestor}
+                  </span>
+                )}
               </div>
               {!ultimo && (
                 <div
@@ -83,7 +112,7 @@ export default function SeguimientoPedido({ pedido }) {
           {actual.emoji} {actual.label}
         </span>
         {' — '}
-        {actual.detalle}
+        {detalleActual}
       </div>
     </div>
   );

@@ -27,9 +27,21 @@ const updateParadaSchema = z.object({
   horaEstimada: z.string().optional().nullable(),
 });
 
+const paradaQuerySchema = z.object({
+  estado: z.enum(['pendiente', 'completada']).optional(),
+  gestorId: z.coerce.number().int().positive().optional(),
+});
+
+const reasignarParadaSchema = z.object({
+  gestorId: z.coerce.number().int().positive(),
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'fecha debe tener el formato YYYY-MM-DD'),
+});
+
 module.exports = {
   createRutaSchema,
   updateRutaSchema,
   createParadaSchema,
   updateParadaSchema,
+  paradaQuerySchema,
+  reasignarParadaSchema,
 };

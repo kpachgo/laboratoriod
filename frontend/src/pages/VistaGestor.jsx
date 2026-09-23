@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import api from '../api/client';
 import Layout from '../components/Layout';
 import { LogisticaBadge } from '../components/StatusBadge';
 import SeguimientoPedido from '../components/SeguimientoPedido';
-import { todayInputDate } from '../utils/format';
+import { formatFecha, todayInputDate } from '../utils/format';
 
 const TIPO_STYLE = {
   recoger: { label: 'RECOGER', bg: '#E7EEF8', color: '#2E5FA3', accion: 'Marcar como recogido' },
@@ -15,9 +15,20 @@ export default function VistaGestor() {
   const [rutas, setRutas] = useState([]);
   const [rutaId, setRutaId] = useState(null);
   const [ruta, setRuta] = useState(null);
+  // Todas las paradas sin completar del gestor, sin importar la fecha de su ruta (null = cargando).
+  const [pendientes, setPendientes] = useState(null);
   const [tab, setTab] = useState('pendiente');
   const [loading, setLoading] = useState(true);
   const [abierta, setAbierta] = useState(null);
+
+  const cargarPendientes = useCallback(
+    () => api.get('/ruta-paradas', { params: { estado: 'pendiente' } }).then(({ data }) => setPendientes(data)),
+    []
+  );
+
+  useEffect(() => {
+    cargarPendientes();
+  }, [cargarPendientes]);
 
   useEffect(() => {
     setLoading(true);
@@ -42,12 +53,14 @@ export default function VistaGestor() {
 
   async function marcarCompletada(paradaId) {
     await api.put(`/ruta-paradas/${paradaId}`, { estado: 'completada' });
-    const { data } = await api.get(`/rutas/${rutaId}`);
-    setRuta(data);
+    await Promise.all([
+      cargarPendientes(),
+      rutaId ? api.get(`/rutas/${rutaId}`).then(({ data }) => setRuta(data)) : null,
+    ]);
   }
 
   async function terminarRuta() {
-    if (pendientesCount > 0 && !window.confirm(`Aún tienes ${pendientesCount} parada(s) pendiente(s). ¿Cerrar la ruta de todos modos?`)) {
+    if (pendientesRuta > 0 && !window.confirm(`Aún tienes ${pendientesRuta} parada(s) pendiente(s) en esta ruta. ¿Cerrar la ruta de todos modos?`)) {
       return;
     }
     await api.put(`/rutas/${rutaId}`, { estado: 'completada' });
@@ -55,8 +68,11 @@ export default function VistaGestor() {
     setRuta(data);
   }
 
-  const paradas = (ruta?.paradas || []).filter((p) => p.estado === tab);
-  const pendientesCount = (ruta?.paradas || []).filter((p) => p.estado === 'pendiente').length;
+  const hoy = todayInputDate();
+  const listaPendientes = pendientes || [];
+  const paradas = tab === 'pendiente' ? listaPendientes : (ruta?.paradas || []).filter((p) => p.estado === 'completada');
+  const pendientesRuta = (ruta?.paradas || []).filter((p) => p.estado === 'pendiente').length;
+  const cargando = tab === 'pendiente' ? pendientes === null : loading;
 
   return (
     <Layout>
@@ -88,7 +104,7 @@ export default function VistaGestor() {
           onClick={() => setTab('pendiente')}
           className={`px-4 py-2 rounded-full text-[12.5px] font-bold ${tab === 'pendiente' ? 'bg-text text-white' : 'bg-surface border border-border text-text-secondary'}`}
         >
-          Pendientes ({pendientesCount})
+          Pendientes ({listaPendientes.length})
         </button>
         <button
           onClick={() => setTab('completada')}
@@ -99,10 +115,15 @@ export default function VistaGestor() {
       </div>
 
       <div className="flex-grow overflow-y-auto flex flex-col gap-3">
-        {loading && <div className="text-sm text-text-muted">Cargando...</div>}
-        {!loading && !ruta && <div className="text-sm text-text-muted">No hay rutas programadas para esta fecha.</div>}
-        {!loading && ruta && paradas.length === 0 && (
-          <div className="text-sm text-text-muted">No hay paradas {tab === 'pendiente' ? 'pendientes' : 'completadas'}.</div>
+        {cargando && <div className="text-sm text-text-muted">Cargando...</div>}
+        {!cargando && paradas.length === 0 && (
+          <div className="text-sm text-text-muted">
+            {tab === 'pendiente'
+              ? 'No tienes paradas pendientes.'
+              : ruta
+                ? 'No hay paradas completadas.'
+                : 'No hay rutas programadas para esta fecha.'}
+          </div>
         )}
 
         {paradas.map((p) => {
@@ -123,6 +144,14 @@ export default function VistaGestor() {
                       {style.label}
                     </span>
                     <span className="text-xs text-text-muted font-semibold">{p.folio || `#${p.pedido_id}`}</span>
+                    {p.ruta_fecha && p.ruta_fecha !== hoy && (
+                      <span
+                        className="px-2.5 py-0.5 rounded-full text-[10.5px] font-bold"
+                        style={p.ruta_fecha < hoy ? { background: '#F3E8E8', color: '#9A3B3B' } : { background: '#E7EEF8', color: '#2E5FA3' }}
+                      >
+                        {p.ruta_fecha < hoy ? 'Atrasada' : 'Programada'} · {formatFecha(p.ruta_fecha)}
+                      </span>
+                    )}
                   </div>
                   <div className="text-[15px] font-bold mt-1">{p.clinica_nombre}</div>
                   <div className="text-[12.5px] text-text-muted">{p.paciente_nombre || 'Sin paciente'} · {p.etapa}</div>
@@ -139,9 +168,7 @@ export default function VistaGestor() {
                 <span className="font-semibold text-primary">{abierta === p.id ? 'Ocultar seguimiento ▴' : 'Ver seguimiento ▾'}</span>
               </div>
 
-              {abierta === p.id && (
-                <SeguimientoPedido pedido={{ etapa_logistica: p.etapa_logistica, estado: p.pedido_estado }} />
-              )}
+              {abierta === p.id && <SeguimientoPedido pedido={p} />}
 
               {p.estado === 'pendiente' && (
                 <button

@@ -1,7 +1,7 @@
 const pool = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
-const { cambiarEtapaLogistica } = require('../utils/pedidoLogistica');
+const { cambiarEtapaLogistica, SEGUIMIENTO_COLUMNS } = require('../utils/pedidoLogistica');
 
 const listRutas = asyncHandler(async (req, res) => {
   const where = [];
@@ -42,7 +42,8 @@ const getRuta = asyncHandler(async (req, res) => {
 
   const [paradas] = await pool.query(
     `SELECT rp.*, p.folio, p.caso_id, p.etapa, p.estado AS pedido_estado, p.etapa_logistica,
-            c.paciente_nombre, cl.nombre AS clinica_nombre
+            c.paciente_nombre, cl.nombre AS clinica_nombre,
+            ${SEGUIMIENTO_COLUMNS}
      FROM ruta_paradas rp
      JOIN pedidos p ON p.id = rp.pedido_id
      JOIN casos c ON c.id = p.caso_id
@@ -152,6 +153,102 @@ const updateParada = asyncHandler(async (req, res) => {
   res.json({ message: 'Parada actualizada' });
 });
 
+// Paradas de todas las rutas, sin importar su fecha. Un gestor solo ve las suyas.
+// Con estado=pendiente sirve para que ninguna parada sin completar se pierda de vista.
+const listParadas = asyncHandler(async (req, res) => {
+  const { estado, gestorId } = req.query;
+  const where = [];
+  const params = [];
+
+  if (estado) {
+    where.push('rp.estado = ?');
+    params.push(estado);
+  }
+  if (req.user.rol === 'gestor') {
+    where.push('r.gestor_id = ?');
+    params.push(req.user.id);
+  } else if (gestorId) {
+    where.push('r.gestor_id = ?');
+    params.push(gestorId);
+  }
+
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const [rows] = await pool.query(
+    `SELECT rp.*, p.folio, p.caso_id, p.etapa, p.estado AS pedido_estado, p.etapa_logistica,
+            c.paciente_nombre, cl.nombre AS clinica_nombre,
+            r.fecha AS ruta_fecha, r.estado AS ruta_estado, r.gestor_id,
+            g.nombre AS gestor_nombre, g.activo AS gestor_activo,
+            ${SEGUIMIENTO_COLUMNS}
+     FROM ruta_paradas rp
+     JOIN rutas r ON r.id = rp.ruta_id
+     JOIN usuarios g ON g.id = r.gestor_id
+     JOIN pedidos p ON p.id = rp.pedido_id
+     JOIN casos c ON c.id = p.caso_id
+     JOIN clinicas cl ON cl.id = c.clinica_id
+     ${whereSql}
+     ORDER BY r.fecha ASC, rp.orden ASC, rp.id ASC`,
+    params
+  );
+  res.json(rows);
+});
+
+// Mueve una parada pendiente a la ruta de otro gestor (o de otra fecha), por ejemplo cuando el
+// gestor asignado se dio de baja o ya no puede atenderla. Si el gestor no tiene ruta ese día, se crea.
+const reasignarParada = asyncHandler(async (req, res) => {
+  const { gestorId, fecha } = req.body;
+
+  const [paradaRows] = await pool.query('SELECT * FROM ruta_paradas WHERE id = ?', [req.params.id]);
+  const parada = paradaRows[0];
+  if (!parada) throw new ApiError(404, 'Parada no encontrada');
+  if (parada.estado !== 'pendiente') throw new ApiError(400, 'Solo se puede reasignar una parada pendiente');
+
+  const [gestorRows] = await pool.query(
+    "SELECT id, nombre FROM usuarios WHERE id = ? AND rol = 'gestor' AND activo = TRUE",
+    [gestorId]
+  );
+  const gestor = gestorRows[0];
+  if (!gestor) throw new ApiError(400, 'El gestor indicado no existe o está inactivo');
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const [rutaRows] = await connection.query(
+      'SELECT id, estado FROM rutas WHERE gestor_id = ? AND fecha = ? ORDER BY id DESC LIMIT 1',
+      [gestor.id, fecha]
+    );
+    let ruta = rutaRows[0];
+    if (ruta?.estado === 'completada') {
+      throw new ApiError(400, 'La ruta de ese gestor en esa fecha ya está completada; elige otra fecha');
+    }
+    if (!ruta) {
+      const [result] = await connection.query('INSERT INTO rutas (gestor_id, fecha, nombre) VALUES (?, ?, ?)', [
+        gestor.id,
+        fecha,
+        `Ruta de ${gestor.nombre}`,
+      ]);
+      ruta = { id: result.insertId };
+    }
+
+    if (ruta.id !== parada.ruta_id) {
+      const [[{ total }]] = await connection.query('SELECT COUNT(*) AS total FROM ruta_paradas WHERE ruta_id = ?', [ruta.id]);
+      const [moved] = await connection.query(
+        "UPDATE ruta_paradas SET ruta_id = ?, orden = ? WHERE id = ? AND estado = 'pendiente'",
+        [ruta.id, total, parada.id]
+      );
+      if (moved.affectedRows === 0) throw new ApiError(400, 'La parada ya se completó y no se puede reasignar');
+    }
+
+    await connection.commit();
+    res.json({ message: 'Parada reasignada', rutaId: ruta.id });
+  } catch (err) {
+    await connection.rollback();
+    throw err;
+  } finally {
+    connection.release();
+  }
+});
+
 const deleteParada = asyncHandler(async (req, res) => {
   const [result] = await pool.query('DELETE FROM ruta_paradas WHERE id = ?', [req.params.id]);
   if (result.affectedRows === 0) throw new ApiError(404, 'Parada no encontrada');
@@ -166,5 +263,7 @@ module.exports = {
   deleteRuta,
   addParada,
   updateParada,
+  listParadas,
+  reasignarParada,
   deleteParada,
 };

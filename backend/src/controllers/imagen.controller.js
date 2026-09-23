@@ -6,8 +6,15 @@ const ApiError = require('../utils/ApiError');
 const { uploadDir } = require('../middleware/upload');
 
 const listImagenesByPedido = asyncHandler(async (req, res) => {
-  const [pedidoRows] = await pool.query('SELECT id FROM pedidos WHERE id = ?', [req.params.pedidoId]);
+  const [pedidoRows] = await pool.query(
+    `SELECT p.id, c.clinica_id FROM pedidos p JOIN casos c ON c.id = p.caso_id WHERE p.id = ?`,
+    [req.params.pedidoId]
+  );
   if (!pedidoRows[0]) throw new ApiError(404, 'Pedido no encontrado');
+
+  if (req.user.rol === 'clinica' && pedidoRows[0].clinica_id !== req.user.clinicaId) {
+    throw new ApiError(403, 'No tiene acceso a este pedido');
+  }
 
   const [rows] = await pool.query('SELECT * FROM imagenes WHERE pedido_id = ? ORDER BY id DESC', [req.params.pedidoId]);
   res.json(rows);

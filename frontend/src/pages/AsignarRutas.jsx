@@ -16,6 +16,8 @@ export default function AsignarRutas() {
   const [ruta, setRuta] = useState(null);
   const [porRecoger, setPorRecoger] = useState([]);
   const [porEntregar, setPorEntregar] = useState([]);
+  // Paradas sin completar de cualquier gestor y fecha, para que ninguna se pierda de vista.
+  const [pendientes, setPendientes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -42,6 +44,11 @@ export default function AsignarRutas() {
     );
   }, []);
 
+  const cargarPendientes = useCallback(async () => {
+    const { data } = await api.get('/ruta-paradas', { params: { estado: 'pendiente' } });
+    setPendientes(data);
+  }, []);
+
   const cargarRuta = useCallback(async () => {
     if (!gestorId) {
       setRuta(null);
@@ -58,15 +65,15 @@ export default function AsignarRutas() {
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([cargarPedidos(), cargarRuta()]).finally(() => setLoading(false));
-  }, [cargarPedidos, cargarRuta]);
+    Promise.all([cargarPedidos(), cargarRuta(), cargarPendientes()]).finally(() => setLoading(false));
+  }, [cargarPedidos, cargarRuta, cargarPendientes]);
 
   async function run(action) {
     setError('');
     setBusy(true);
     try {
       await action();
-      await Promise.all([cargarPedidos(), cargarRuta()]);
+      await Promise.all([cargarPedidos(), cargarRuta(), cargarPendientes()]);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo completar la acción');
     } finally {
@@ -98,9 +105,15 @@ export default function AsignarRutas() {
     return run(() => api.delete(`/ruta-paradas/${parada.id}`));
   }
 
+  // Mueve la parada a la ruta del gestor y la fecha elegidos arriba.
+  function reasignar(parada) {
+    return run(() => api.post(`/ruta-paradas/${parada.id}/reasignar`, { gestorId: Number(gestorId), fecha }));
+  }
+
   const gestorNombre = gestores.find((g) => String(g.id) === gestorId)?.nombre ?? 'gestor';
   const rutaCerrada = ruta?.estado === 'completada';
   const puedeAsignar = Boolean(gestorId) && !rutaCerrada && !busy;
+  const pendientesFuera = pendientes.filter((p) => p.ruta_id !== ruta?.id);
 
   return (
     <Layout>
@@ -159,39 +172,59 @@ export default function AsignarRutas() {
           ))}
         </Columna>
 
-        <Columna
-          titulo={ruta?.nombre || 'Ruta del día'}
-          vacio={loading ? 'Cargando...' : 'Aún no hay paradas para este gestor en esta fecha.'}
-          vacioActivo={!ruta || ruta.paradas.length === 0}
-        >
-          {ruta?.paradas.map((p) => {
-            const style = TIPO_STYLE[p.tipo];
-            return (
-              <div key={p.id} className="card p-3.5 flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <span className="px-2.5 py-0.5 rounded-full text-[10.5px] font-bold" style={{ background: style.bg, color: style.color }}>
-                    {style.label}
-                  </span>
-                  <span className="text-[11.5px] font-bold text-text-muted">
-                    {p.estado === 'completada' ? 'Completada' : 'Pendiente'}
-                  </span>
+        <div className="flex flex-col gap-6">
+          <Columna
+            titulo={ruta?.nombre || 'Ruta del día'}
+            vacio={loading ? 'Cargando...' : 'Aún no hay paradas para este gestor en esta fecha.'}
+            vacioActivo={!ruta || ruta.paradas.length === 0}
+          >
+            {ruta?.paradas.map((p) => {
+              const style = TIPO_STYLE[p.tipo];
+              return (
+                <div key={p.id} className="card p-3.5 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10.5px] font-bold" style={{ background: style.bg, color: style.color }}>
+                      {style.label}
+                    </span>
+                    <span className="text-[11.5px] font-bold text-text-muted">
+                      {p.estado === 'completada' ? 'Completada' : 'Pendiente'}
+                    </span>
+                  </div>
+                  <div className="text-[13.5px] font-bold">{p.clinica_nombre}</div>
+                  <div className="text-xs text-text-muted">
+                    Caso C-{p.caso_id} · Prueba #{p.pedido_id} · {p.paciente_nombre || 'Sin paciente'}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <LogisticaBadge etapa={p.etapa_logistica} />
+                    {p.estado === 'pendiente' && (
+                      <button disabled={busy} onClick={() => quitar(p)} className="text-xs font-semibold text-red-600 disabled:opacity-50">
+                        Quitar
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div className="text-[13.5px] font-bold">{p.clinica_nombre}</div>
-                <div className="text-xs text-text-muted">
-                  Caso C-{p.caso_id} · Prueba #{p.pedido_id} · {p.paciente_nombre || 'Sin paciente'}
-                </div>
-                <div className="flex items-center justify-between">
-                  <LogisticaBadge etapa={p.etapa_logistica} />
-                  {p.estado === 'pendiente' && (
-                    <button disabled={busy} onClick={() => quitar(p)} className="text-xs font-semibold text-red-600 disabled:opacity-50">
-                      Quitar
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </Columna>
+              );
+            })}
+          </Columna>
+
+          <Columna
+            titulo="Pendientes en otras fechas o gestores"
+            ayuda="Paradas que aún no se completan, sin importar su fecha. Si su gestor ya no puede atenderlas, reasígnalas al gestor y la fecha elegidos arriba."
+            vacio="No hay paradas pendientes en otras rutas."
+          >
+            {pendientesFuera.map((p) => (
+              <PendienteCard
+                key={p.id}
+                parada={p}
+                accion={`Reasignar a ${gestorNombre}`}
+                disabled={!puedeAsignar}
+                busy={busy}
+                onReasignar={() => reasignar(p)}
+                onQuitar={() => quitar(p)}
+              />
+            ))}
+          </Columna>
+        </div>
       </div>
     </Layout>
   );
@@ -208,6 +241,43 @@ function Columna({ titulo, ayuda, vacio, vacioActivo, children }) {
       </div>
       {sinItems && <div className="text-[13px] text-text-muted">{vacio}</div>}
       {children}
+    </div>
+  );
+}
+
+function PendienteCard({ parada, accion, disabled, busy, onReasignar, onQuitar }) {
+  const style = TIPO_STYLE[parada.tipo];
+  const atrasada = parada.ruta_fecha < todayInputDate();
+  return (
+    <div className="card p-3.5 flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <span className="px-2.5 py-0.5 rounded-full text-[10.5px] font-bold" style={{ background: style.bg, color: style.color }}>
+          {style.label}
+        </span>
+        <span className={`text-[11.5px] font-bold ${atrasada ? 'text-red-600' : 'text-text-muted'}`}>
+          {atrasada ? 'Atrasada · ' : ''}Ruta del {formatFecha(parada.ruta_fecha)}
+        </span>
+      </div>
+      <div className="text-[13.5px] font-bold">{parada.clinica_nombre}</div>
+      <div className="text-xs text-text-muted">
+        Caso C-{parada.caso_id} · Prueba #{parada.pedido_id} · {parada.paciente_nombre || 'Sin paciente'}
+      </div>
+      <div className="text-xs text-text-muted">
+        Gestor: <span className="font-semibold text-text">{parada.gestor_nombre}</span>
+        {!parada.gestor_activo && <span className="font-bold text-red-600"> (inactivo)</span>}
+      </div>
+      <div className="flex items-center gap-3">
+        <button
+          disabled={disabled}
+          onClick={onReasignar}
+          className="flex-grow h-9 rounded-input bg-primary text-white text-[12.5px] font-semibold disabled:opacity-50"
+        >
+          {accion}
+        </button>
+        <button disabled={busy} onClick={onQuitar} className="text-xs font-semibold text-red-600 disabled:opacity-50">
+          Quitar
+        </button>
+      </div>
     </div>
   );
 }

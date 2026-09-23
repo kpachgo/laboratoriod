@@ -66,6 +66,8 @@ CREATE TABLE casos (
     doctor_id         INT NOT NULL,
     paciente_nombre   VARCHAR(150),
     descripcion       VARCHAR(255),            -- ej: "Corona - Pieza 16"
+    finalizado_at     TIMESTAMP NULL DEFAULT NULL, -- cuando la clínica entregó el trabajo al paciente y lo cerró;
+                                                     -- NULL = en curso (distinto de pedidos.estado, que es del laboratorio)
     created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (clinica_id) REFERENCES clinicas(id),
     FOREIGN KEY (doctor_id) REFERENCES doctores(id)

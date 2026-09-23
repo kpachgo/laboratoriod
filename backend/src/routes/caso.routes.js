@@ -28,6 +28,9 @@ router.put(
   validateBody(updateCasoSchema),
   controller.updateCaso
 );
+// Solo la clínica dueña del caso lo cierra (trabajo entregado al paciente) o lo reabre.
+router.post('/:id/finalizar', authorize('clinica'), validateParams(idParam), controller.finalizarCaso);
+router.post('/:id/reabrir', authorize('clinica'), validateParams(idParam), controller.reabrirCaso);
 router.delete('/:id', authorize('admin'), validateParams(idParam), controller.deleteCaso);
 
 router.post(

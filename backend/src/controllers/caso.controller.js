@@ -106,6 +106,35 @@ const createCaso = asyncHandler(async (req, res) => {
   }
 });
 
+// La clínica da por terminado el trabajo cuando ya lo entregó al paciente. Solo se puede si todas
+// las pruebas ya volvieron a la clínica: no se cierra un caso con una pieza en el laboratorio o en camino.
+const finalizarCaso = asyncHandler(async (req, res) => {
+  const [casoRows] = await pool.query('SELECT id, clinica_id, finalizado_at FROM casos WHERE id = ?', [req.params.id]);
+  const caso = casoRows[0];
+  if (!caso || caso.clinica_id !== req.user.clinicaId) throw new ApiError(404, 'Caso no encontrado');
+  if (caso.finalizado_at) return res.json({ message: 'El caso ya estaba finalizado' });
+
+  const [[{ pendientes }]] = await pool.query(
+    "SELECT COUNT(*) AS pendientes FROM pedidos WHERE caso_id = ? AND etapa_logistica <> 'entregado_en_clinica'",
+    [caso.id]
+  );
+  if (pendientes > 0) {
+    throw new ApiError(400, 'El caso aún tiene pruebas en camino o en el laboratorio; espera a que se entreguen en la clínica para finalizarlo');
+  }
+
+  await pool.query('UPDATE casos SET finalizado_at = NOW() WHERE id = ?', [caso.id]);
+  res.json({ message: 'Caso finalizado' });
+});
+
+const reabrirCaso = asyncHandler(async (req, res) => {
+  const [casoRows] = await pool.query('SELECT id, clinica_id FROM casos WHERE id = ?', [req.params.id]);
+  const caso = casoRows[0];
+  if (!caso || caso.clinica_id !== req.user.clinicaId) throw new ApiError(404, 'Caso no encontrado');
+
+  await pool.query('UPDATE casos SET finalizado_at = NULL WHERE id = ?', [caso.id]);
+  res.json({ message: 'Caso reabierto' });
+});
+
 const updateCaso = asyncHandler(async (req, res) => {
   const [existingRows] = await pool.query('SELECT * FROM casos WHERE id = ?', [req.params.id]);
   const existing = existingRows[0];
@@ -186,6 +215,8 @@ module.exports = {
   listCasos,
   getCaso,
   createCaso,
+  finalizarCaso,
+  reabrirCaso,
   updateCaso,
   deleteCaso,
   addCasoItem,
